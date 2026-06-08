@@ -2436,181 +2436,6 @@ function getPerkDefinitions() {
             }
         }
 
-        function addJobProgress(gs, kind, success) {
-            if (!gs) return;
-            if (!gs.jobProgress) gs.jobProgress = { frontdesk: 0, lunchroom: 0, visitation: 0, shifts: 0 };
-            if (!kind) kind = 'frontdesk';
-            var base = success ? 1 : -1;
-            gs.jobProgress[kind] = Math.max(0, (gs.jobProgress[kind] || 0) + base);
-            gs.jobProgress.shifts = Math.max(0, (gs.jobProgress.shifts || 0) + (success ? 1 : 0));
-        }
-
-        function finishJobShift(scene, cfg, result) {
-            if (!scene || !scene.gs) return;
-            var g = scene.gs;
-            var kind = cfg.kind || 'frontdesk';
-            var success = !!(result && result.success);
-            var streak = Number(result && result.streak || 0);
-            var score = Number(result && result.score || 0);
-            var msg = result && result.msg ? String(result.msg) : 'Shift complete.';
-
-            addJobProgress(g, kind, success);
-
-            if (kind === 'frontdesk') {
-                g.taskTier = clampValue((g.taskTier || 0) + (success ? 1 : 0), 0, 99);
-                g.rep = clampValue((g.rep || 0) + (success ? 2 + Math.floor(streak / 2) : 1), 0, 100);
-                g.notes = (g.notes || 0) + (success ? 1 : 0);
-                g.wil = clampValue((g.wil || 0) + (success ? 4 : -4), 0, g.maxWil);
-                g.sta = clampValue((g.sta || 0) - (success ? 6 : 10), 0, g.maxSta);
-                g.exp = (g.exp || 0) + (success ? 18 + (score * 2) : 7);
-                setSceneToast(scene, success ? 'Front desk shift finished cleanly.' : 'Front desk shift was rough.');
-            } else if (kind === 'lunchroom') {
-                g.rep = clampValue((g.rep || 0) + (success ? 2 : 1), 0, 100);
-                g.hp = clampValue((g.hp || 0) + (success ? 4 : 0), 0, g.maxHp);
-                g.sta = clampValue((g.sta || 0) + (success ? 5 : -4), 0, g.maxSta);
-                g.wil = clampValue((g.wil || 0) + (success ? 2 : -2), 0, g.maxWil);
-                g.hunger = clampValue((g.hunger || 0) - (success ? 18 : 6), 0, 100);
-                g.exp = (g.exp || 0) + (success ? 16 + (score * 2) : 6);
-                setSceneToast(scene, success ? 'Waitress shift kept the room moving.' : 'Service slipped under pressure.');
-            } else if (kind === 'visitation') {
-                g.favors = (g.favors || 0) + (success ? 1 : 0);
-                g.rep = clampValue((g.rep || 0) + (success ? 3 : 1), 0, 100);
-                g.wil = clampValue((g.wil || 0) + (success ? 3 : -3), 0, g.maxWil);
-                g.exp = (g.exp || 0) + (success ? 14 + (score * 2) : 5);
-                setSceneToast(scene, success ? 'Visitation paperwork cleared.' : 'A form came back incomplete.');
-            }
-
-            while (g.exp >= g.lvl * 100) {
-                g.exp -= g.lvl * 100;
-                g.lvl += 1;
-                g.maxHp += 5;
-                g.maxSta += 5;
-                g.maxWil += 5;
-                g.hp = g.maxHp;
-                g.sta = g.maxSta;
-                g.wil = g.maxWil;
-                grantSkillPoint(g, 1, 'Level up bonus');
-            }
-
-            if (scene._refreshHUD) scene._refreshHUD();
-            if (scene._updateActionUI) scene._updateActionUI();
-            try { localStorage.setItem('ws_local', JSON.stringify(g)); } catch (e) {}
-        }
-
-        function runJobShift(scene, cfg) {
-            if (!scene || !scene.add || !scene.time || !scene.gs) return false;
-            if (scene.inTrans || scene.jobShiftActive) return false;
-            scene.jobShiftActive = true;
-            scene.inTrans = true;
-
-            var g = scene.gs;
-            var W = scene.scale.width, H = scene.scale.height;
-            var kind = cfg.kind || 'frontdesk';
-            var title = cfg.title || 'SHIFT';
-            var labels = cfg.labels || ['A', 'B', 'C'];
-            var rounds = Math.max(3, cfg.rounds || 5);
-            var timeMs = Math.max(1600, cfg.timeMs || 2800);
-            var score = 0, streak = 0, done = 0, totalCorrect = 0, totalWrong = 0;
-            var panel = scene.add.container(0, 0).setScrollFactor(0).setDepth(5000);
-            var dim = scene.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.70).setScrollFactor(0);
-            panel.add(dim);
-            var box = scene.add.rectangle(W / 2, H / 2, Math.min(W * 0.88, 760), Math.min(H * 0.78, 620), 0x100816, 0.98).setStrokeStyle(3, 0x9b59b6).setScrollFactor(0);
-            panel.add(box);
-            var head = scene.add.text(W / 2, H * 0.16, title, { fontSize: '26px', fill: '#c8a0d0', fontFamily: 'Georgia', fontStyle: 'italic' }).setOrigin(0.5).setScrollFactor(0);
-            panel.add(head);
-            var sub = scene.add.text(W / 2, H * 0.22, cfg.desc || 'Complete the shift before the timer runs out.', { fontSize: '14px', fill: '#ffffff', fontFamily: 'Arial Black', align: 'center', wordWrap: { width: 580 } }).setOrigin(0.5).setScrollFactor(0);
-            panel.add(sub);
-            var status = scene.add.text(W / 2, H * 0.31, '', { fontSize: '18px', fill: '#ffd27d', fontFamily: 'Arial Black', align: 'center' }).setOrigin(0.5).setScrollFactor(0);
-            panel.add(status);
-            var prompt = scene.add.text(W / 2, H * 0.40, '', { fontSize: '24px', fill: '#ffffff', fontFamily: 'Arial Black', align: 'center', wordWrap: { width: 620 } }).setOrigin(0.5).setScrollFactor(0);
-            panel.add(prompt);
-            var meterBg = scene.add.rectangle(W / 2, H * 0.49, 420, 18, 0x2a1736, 1).setStrokeStyle(2, 0x8a2be2).setScrollFactor(0);
-            var meter = scene.add.rectangle(W / 2 - 210, H * 0.49, 0, 18, 0xff5aa9, 1).setOrigin(0, 0.5).setScrollFactor(0);
-            panel.add(meterBg); panel.add(meter);
-            var timerTxt = scene.add.text(W / 2, H * 0.53, '', { fontSize: '14px', fill: '#ddd', fontFamily: 'Arial Black' }).setOrigin(0.5).setScrollFactor(0);
-            panel.add(timerTxt);
-            var btnY = H * 0.66;
-            var btnW = 180, btnH = 54;
-            var buttons = [];
-            var current = null;
-            var roundTimer = null;
-            var progressTimer = null;
-            var phase = 0;
-
-            function cleanup() {
-                if (roundTimer && roundTimer.remove) roundTimer.remove(false);
-                if (progressTimer && progressTimer.remove) progressTimer.remove(false);
-                buttons.forEach(function(b) { if (b && b.destroy) b.destroy(); });
-                if (panel && panel.destroy) panel.destroy(true);
-                scene.jobShiftActive = false;
-                scene.inTrans = false;
-            }
-
-            function makeBtn(i, label, x) {
-                var b = scene.add.text(x, btnY, label, { fontSize: '18px', fill: '#ffffff', fontFamily: 'Arial Black', backgroundColor: '#3a1a5a', padding: { left: 14, right: 14, top: 8, bottom: 8 }, align: 'center' }).setOrigin(0.5).setScrollFactor(0).setDepth(5002).setInteractive({ useHandCursor: true });
-                b.on('pointerdown', function() { choose(i); });
-                buttons.push(b);
-                panel.add(b);
-            }
-
-            labels.forEach(function(l, i) { makeBtn(i, l, W * (0.28 + i * 0.22)); });
-
-            function updatePrompt() {
-                var templates = cfg.templates || [];
-                if (phase >= rounds) { finish(); return; }
-                current = templates[Phaser.Math.Between(0, templates.length - 1)] || { text: 'Match the prompt', answer: 0 };
-                prompt.setText(current.text || 'Match the prompt');
-                status.setText('Round ' + (phase + 1) + ' / ' + rounds + '  |  Streak ' + streak + '  |  Score ' + score);
-                meter.setScale(0, 1);
-                timerTxt.setText('');
-                var start = scene.time.now;
-                if (progressTimer && progressTimer.remove) progressTimer.remove(false);
-                progressTimer = scene.time.addEvent({ delay: 32, loop: true, callback: function() {
-                    var p = Math.min(1, (scene.time.now - start) / timeMs);
-                    meter.setScale(p, 1);
-                    timerTxt.setText('Time: ' + Math.max(0, Math.ceil((timeMs - (scene.time.now - start)) / 1000)) + 's');
-                    if (p >= 1) {
-                        totalWrong += 1;
-                        streak = 0;
-                        phase += 1;
-                        status.setText('Too slow.');
-                        updatePrompt();
-                    }
-                }});
-            }
-
-            function choose(i) {
-                if (!current) return;
-                if (progressTimer && progressTimer.remove) { progressTimer.remove(false); progressTimer = null; }
-                var ok = i === current.answer;
-                if (ok) {
-                    totalCorrect += 1;
-                    streak += 1;
-                    score += 1 + Math.floor(streak / 2);
-                    status.setText('Correct.');
-                } else {
-                    totalWrong += 1;
-                    streak = 0;
-                    status.setText('Wrong item.');
-                }
-                phase += 1;
-                scene.time.delayedCall(120, updatePrompt);
-            }
-
-            function finish() {
-                cleanup();
-                var success = totalCorrect >= Math.ceil(rounds * 0.6);
-                var msg = success ? (cfg.success || 'Shift successful.') : (cfg.fail || 'Shift was rough.') ;
-                finishJobShift(scene, cfg, { success: success, score: score, streak: streak, msg: msg });
-            }
-
-            updatePrompt();
-            roundTimer = scene.time.delayedCall(timeMs * rounds + 1200, function() {
-                if (scene.jobShiftActive) finish();
-            });
-            return true;
-        }
-
         function applyRoomAction(scene, act) {
             if (!scene || !scene.gs || !act) return;
             if (scene.inTrans || scene.isPaused) return;
@@ -2651,26 +2476,6 @@ function getPerkDefinitions() {
                     msg = 'Training completed.';
                     break;
                 case 'meal':
-                    if (scene && scene._runJobShift) {
-                        scene._runJobShift({
-                            kind: 'lunchroom',
-                            title: 'WAITRESS SHIFT',
-                            desc: 'Take the order, balance the tray, and serve the right table.',
-                            rounds: 5,
-                            timeMs: 2200,
-                            labels: ['ORDER', 'TRAY', 'TABLE'],
-                            templates: [
-                                { text: 'Take the order slip.', answer: 0 },
-                                { text: 'Keep the drinks balanced.', answer: 1 },
-                                { text: 'Serve the right table.', answer: 2 },
-                                { text: 'Check the meal ticket.', answer: 0 },
-                                { text: 'Carry the tray carefully.', answer: 1 }
-                            ],
-                            success: 'The lunchroom shift ran smoothly.',
-                            fail: 'The lunchroom shift got messy.'
-                        });
-                        return;
-                    }
                     g.hp = clampValue((g.hp || 0) + 18, 0, g.maxHp);
                     g.sta = clampValue((g.sta || 0) + 20, 0, g.maxSta);
                     g.hunger = clampValue((g.hunger || 0) - 35, 0, 100);
@@ -2694,33 +2499,11 @@ function getPerkDefinitions() {
                     msg = 'A relic was catalogued.';
                     break;
                 case 'work':
-                    g.taskTier = clampValue((g.taskTier || 0) + 1, 0, 99);
-                    g.currentTask = 'Front Desk Shift #' + g.taskTier;
-                    if (scene && scene._runJobShift) {
-                        scene._runJobShift({
-                            kind: 'frontdesk',
-                            title: 'FRONT DESK SHIFT',
-                            desc: 'Sort paperwork, answer calls, and keep the line moving.',
-                            rounds: 5,
-                            timeMs: 2500,
-                            labels: ['FILE', 'CALL', 'STAMP'],
-                            templates: [
-                                { text: 'A form needs filing.', answer: 0 },
-                                { text: 'A call comes through.', answer: 1 },
-                                { text: 'A seal is needed.', answer: 2 },
-                                { text: 'The queue wants paperwork.', answer: 0 },
-                                { text: 'Sign the intake card.', answer: 2 }
-                            ],
-                            success: 'Front desk shift completed cleanly.',
-                            fail: 'Front desk shift missed several beats.'
-                        });
-                        return;
-                    }
                     g.rep = clampValue((g.rep || 0) + 1, 0, 100);
                     g.sta = clampValue((g.sta || 0) - 6, 0, g.maxSta);
                     g.wil = clampValue((g.wil || 0) + 2, 0, g.maxWil);
                     addExp(8);
-                    msg = 'Front desk work was completed.';
+                    msg = 'Desk work was retired from the merged loop.';
                     break;
                 case 'perk':
                     g.rep = clampValue((g.rep || 0) + 1, 0, 100);
@@ -6190,7 +5973,6 @@ function getPerkDefinitions() {
             actions: [
                 { type: 'mission', label: '[ MISSION BOARD ]', short: 'MISSION', zone: [0.18, 0.54, 0.22, 0.16], desc: 'Take the next assignment.' },
                 { type: 'archive', label: '[ ARCHIVE DESK ]', short: 'ARCHIVE', zone: [0.42, 0.34, 0.18, 0.16], desc: 'Review records and notes.' },
-                { type: 'work', label: '[ LONG DESK WORK ]', short: 'DESK', zone: [0.31, 0.48, 0.38, 0.18], desc: 'Handle the center desk under pressure.' },
                 { type: 'perk', label: '[ PERK BOARD ]', short: 'PERK', zone: [0.18, 0.30, 0.18, 0.16], desc: 'Review perk options.' },
                 { type: 'relic', label: '[ RELIC LOG ]', short: 'RELIC', zone: [0.68, 0.30, 0.18, 0.16], desc: 'Catalog relic effects.' }
             ]
@@ -8667,29 +8449,31 @@ function getPerkDefinitions() {
       const kind = String((enemy && (enemy.encounterType || enemy.baseEncounterType || enemy.followMode || enemy.followBehavior)) || '').toLowerCase();
       const room = String(roomKey || '').toLowerCase();
       const nude = currentPortrait(gs) === 'nude2';
+
       if (kind === 'conversation') {
         if (choice === 'flirt') {
-          s.mode = 'gray-flirt';
+          s.mode = 'follow';
           s.behavior = (room === 'bedroom' || room === 'visitation') ? 'bed' : 'follow';
           s.expGain = 18;
         } else if (choice === 'calm') {
-          s.mode = 'gray-neutral';
-          s.behavior = 'strip';
+          s.mode = 'talk';
+          s.behavior = 'follow';
           s.expGain = nude ? 20 : 12;
         } else {
-          s.mode = 'gray-dismiss';
-          s.behavior = 'strip';
+          s.mode = 'dismiss';
+          s.behavior = 'follow';
           s.expGain = 0;
         }
       } else if (kind === 'hscene') {
-        s.mode = (choice === 'calm') ? 'pink-allow' : 'pink-deny';
-        s.behavior = (choice === 'calm') ? 'follow' : 'strip';
+        s.mode = (choice === 'calm') ? 'allow' : 'deny';
+        s.behavior = (choice === 'calm') ? 'follow' : 'follow';
         s.expGain = (choice === 'calm') ? 5 : 0;
       } else if (kind === 'battle' || kind === 'red') {
         s.mode = 'red';
         s.behavior = 'follow';
         s.expGain = 0;
       }
+
       if (s.expGain) grantMapExp(gs, s.expGain);
       if (gs && s.behavior) gs.lastConversationBehavior = s.behavior;
       if (gs && s.mode) {
@@ -8741,9 +8525,8 @@ function getPerkDefinitions() {
   if (_showMapHscenePrompt) {
     window.showMapHscenePrompt = function (scene, e, roomKey, onDone) {
       return _showMapHscenePrompt.call(this, scene, e, roomKey, function (allowed, chosenScene) {
-        const mode = allowed ? 'pink-allow' : 'pink-deny';
         if (scene && e) {
-          applyChaseMode(scene, e, mode, allowed ? 'follow' : 'strip', allowed ? 1 : 0);
+          applyChaseMode(scene, e, allowed ? 'allow' : 'deny', 'follow', allowed ? 1 : 0);
           if (allowed) grantMapExp(scene.gs, 5);
         }
         if (onDone) onDone(allowed, chosenScene);
@@ -8769,10 +8552,10 @@ function getPerkDefinitions() {
     let defeatNow = false;
     let expGain = 0;
 
-    if (mode === 'red') {
+    if (mode === 'red' || mode === 'deny') {
       sceneKey = portrait === 'nude2' ? 'grab-cp-pm' : 'grab-ap';
       defeatNow = true;
-    } else if (mode === 'pink-allow') {
+    } else if (mode === 'allow') {
       if (count >= 2) {
         sceneKey = portrait === 'nude2' ? 'grab-cp-pm' : 'grab-ap';
         defeatNow = true;
@@ -8780,19 +8563,9 @@ function getPerkDefinitions() {
       } else {
         sceneKey = 'tease-ac';
       }
-    } else if (mode === 'pink-deny') {
-      sceneKey = portrait === 'nude2' ? 'grab-cp-pm' : 'grab-ap';
-      defeatNow = true;
-    } else if (mode === 'gray-flirt') {
-      sceneKey = 'tease-ac';
-      applyChaseMode(scene, e, 'gray-flirt', 'bed', count);
-    } else if (mode === 'gray-neutral') {
-      sceneKey = portrait === 'nude2' ? 'grab-cp-pm' : 'strip';
-      defeatNow = true;
-      expGain = portrait === 'nude2' ? 20 : 12;
-    } else if (mode === 'gray-dismiss') {
-      sceneKey = portrait === 'nude2' ? 'grab-cp-pm' : 'grab-ap';
-      defeatNow = true;
+    } else if (mode === 'follow' || mode === 'talk') {
+      sceneKey = count >= 2 ? 'grope-b' : 'tease-ac';
+      if (count >= 2) expGain = 3;
     } else if (mode === 'bed') {
       sceneKey = roomKey === 'bedroom' ? ((window.corruptionAverage && window.corruptionAverage(scene.gs) >= 18) ? 'sleepgrope-bp' : 'sleep-p2') : 'sleepgrope-bp';
       defeatNow = roomKey === 'bedroom';
