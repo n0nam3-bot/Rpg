@@ -40,7 +40,7 @@ export class BedroomScene extends Phaser.Scene {
     const W = this.scale.width;
     const H = this.scale.height;
     const worldW = 2240;
-    const groundY = 620;
+    const groundY = 576;
 
     this.input.addPointer(3);
     this.physics.world.setBounds(0, 0, worldW, H);
@@ -53,11 +53,11 @@ export class BedroomScene extends Phaser.Scene {
 
     this.floorRects = [
       makeStaticRect(this, worldW / 2, groundY + 24, worldW, 48),
-      makeStaticRect(this, 780, 520, 240, 18),
-      makeStaticRect(this, 1340, 470, 200, 18)
+      makeStaticRect(this, 780, 492, 240, 18),
+      makeStaticRect(this, 1340, 446, 200, 18)
     ];
 
-    this.player = this.physics.add.sprite(220, 540, HERO).setScale(0.78).setCollideWorldBounds(true);
+    this.player = this.physics.add.sprite(220, 500, HERO).setScale(0.84).setCollideWorldBounds(true);
     this.player.body.setSize(70, 88, true);
     this.player.setBounce(0.02);
     this.floorRects.forEach((r) => this.physics.add.collider(this.player, r));
@@ -68,10 +68,10 @@ export class BedroomScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
     this.interactables = [
-      { x: 620, y: 530, label: 'Bed', action: () => this.sleep(), prompt: 'Rest to lower pressure and advance the day.' },
-      { x: 1020, y: 470, label: 'Mirror', action: () => sceneToNext(this, 'StatusScene', { state: this.state, returnTo: 'BedroomScene' }), prompt: 'Check your route status.' },
-      { x: 1540, y: 470, label: 'Chest', action: () => this.saveHere(), prompt: 'Save your progress.' },
-      { x: 2060, y: 530, label: 'Door', action: () => sceneToNext(this, 'CorridorScene', { state: this.state, spawnX: 180 }), prompt: 'Step into the corridor.' }
+      { x: 620, y: 494, label: 'Bed', action: () => this.sleep(), prompt: 'Rest to lower pressure and advance the day.' },
+      { x: 1020, y: 442, label: 'Mirror', action: () => sceneToNext(this, 'StatusScene', { state: this.state, returnTo: 'BedroomScene' }), prompt: 'Check your route status.' },
+      { x: 1540, y: 442, label: 'Chest', action: () => this.saveHere(), prompt: 'Save your progress.' },
+      { x: 2060, y: 494, label: 'Door', action: () => sceneToNext(this, 'CorridorScene', { state: this.state, spawnX: 180 }), prompt: 'Step into the corridor.' }
     ];
 
     this.interactGfx = this.add.group();
@@ -85,9 +85,9 @@ export class BedroomScene extends Phaser.Scene {
       obj.note = note;
     });
 
-    this.bedBase = this.add.rectangle(620, 540, 220, 56, 0x5f3a4d, 1).setStrokeStyle(3, 0xf8c6ff, 0.45);
-    this.bedPillow = this.add.rectangle(568, 520, 74, 22, 0xf2d7e6, 1).setStrokeStyle(2, 0xffdff1, 0.4);
-    this.bedBlanket = this.add.rectangle(642, 530, 126, 34, 0x7d4a62, 0.95).setStrokeStyle(2, 0xf2c6ff, 0.25);
+    this.bedBase = this.add.rectangle(620, 504, 220, 56, 0x5f3a4d, 1).setStrokeStyle(3, 0xf8c6ff, 0.45);
+    this.bedPillow = this.add.rectangle(568, 484, 74, 22, 0xf2d7e6, 1).setStrokeStyle(2, 0xffdff1, 0.4);
+    this.bedBlanket = this.add.rectangle(642, 494, 126, 34, 0x7d4a62, 0.95).setStrokeStyle(2, 0xf2c6ff, 0.25);
     this.barrel = this.add.image(1240, 560, BARREL).setScale(0.92).setAlpha(0.95);
     this.chest = this.add.image(1540, 510, CHEST).setScale(0.95).setAlpha(0.96);
 

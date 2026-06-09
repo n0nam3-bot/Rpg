@@ -45,7 +45,7 @@ export class CorridorScene extends Phaser.Scene {
     const H = this.scale.height;
     this.worldW = 5600;
     this.worldH = 720;
-    const groundY = 610;
+    const groundY = 568;
 
     this.input.addPointer(3);
     this.physics.world.setBounds(0, 0, this.worldW, this.worldH);
@@ -66,13 +66,13 @@ export class CorridorScene extends Phaser.Scene {
 
     this.groundRects = [
       makeStaticRect(this, this.worldW / 2, groundY + 24, this.worldW, 48),
-      makeStaticRect(this, 820, 510, 220, 18),
-      makeStaticRect(this, 1760, 470, 240, 18),
-      makeStaticRect(this, 3040, 500, 260, 18),
-      makeStaticRect(this, 4300, 450, 280, 18)
+      makeStaticRect(this, 820, 478, 220, 18),
+      makeStaticRect(this, 1760, 438, 240, 18),
+      makeStaticRect(this, 3040, 468, 260, 18),
+      makeStaticRect(this, 4300, 418, 280, 18)
     ];
 
-    this.player = this.physics.add.sprite(this.spawnX, 540, HERO_IDLE).setScale(0.78).setCollideWorldBounds(true);
+    this.player = this.physics.add.sprite(this.spawnX, 496, HERO_IDLE).setScale(0.84).setCollideWorldBounds(true);
     this.player.body.setSize(70, 88, true);
     this.groundRects.forEach((r) => this.physics.add.collider(this.player, r));
 
@@ -103,10 +103,10 @@ export class CorridorScene extends Phaser.Scene {
 
   _spawnDoors() {
     this.doors = [
-      { x: 160, y: 530, label: 'Bedroom', prompt: 'Return to the bedroom and rest.', action: () => sceneToNext(this, 'BedroomScene', { state: this.state, spawnX: 2060 }) },
-      { x: 1400, y: 510, label: 'Status', prompt: 'Check your route status.', action: () => sceneToNext(this, 'StatusScene', { state: this.state, returnTo: 'CorridorScene' }) },
-      { x: 2900, y: 470, label: 'Battle Gate', prompt: 'Step into the combat screen.', action: () => this._startBattle('gate', 1.0) },
-      { x: 4720, y: 450, label: 'Bedlift', prompt: 'Return to the bedroom route.', action: () => sceneToNext(this, 'BedroomScene', { state: this.state, spawnX: 220 }) }
+      { x: 160, y: 494, label: 'Bedroom', prompt: 'Return to the bedroom and rest.', action: () => sceneToNext(this, 'BedroomScene', { state: this.state, spawnX: 2060 }) },
+      { x: 1400, y: 478, label: 'Status', prompt: 'Check your route status.', action: () => sceneToNext(this, 'StatusScene', { state: this.state, returnTo: 'CorridorScene' }) },
+      { x: 2900, y: 438, label: 'Battle Gate', prompt: 'Step into the combat screen.', action: () => this._startBattle('gate', 1.15) },
+      { x: 4720, y: 418, label: 'Bedlift', prompt: 'Return to the bedroom route.', action: () => sceneToNext(this, 'BedroomScene', { state: this.state, spawnX: 220 }) }
     ];
     this.doorGfx = this.doors.map((d) => {
       const rect = this.add.rectangle(d.x, d.y - 58, 94, 96, 0x25172c, 0.35).setStrokeStyle(2, 0xffd1f6, 0.3);
@@ -185,9 +185,9 @@ export class CorridorScene extends Phaser.Scene {
 
   _startBattle(kind = 'patrol', scale = 1.0, patrol = null) {
     const enemy = patrol || this._nearThing(this.patrols, 110);
-    const enemyHp = Math.round((34 + this.state.day * 5) * scale);
-    const enemyDmg = Math.round((9 + this.state.day * 2) * scale);
-    const enemySpeed = Math.round((64 + this.state.day * 3) * scale);
+    const enemyHp = Math.round((42 + this.state.day * 6) * scale * (1 + (this.state.defeats || 0) * 0.08));
+    const enemyDmg = Math.round((11 + this.state.day * 2.5) * scale * (1 + (this.state.defeats || 0) * 0.05));
+    const enemySpeed = Math.round((72 + this.state.day * 3) * scale);
     sceneToNext(this, 'BattleScene', {
       state: this.state,
       encounter: {

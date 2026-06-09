@@ -666,6 +666,8 @@ export function freshState() {
     gold: 0,
     apples: 0,
     kills: 0,
+    defeats: 0,
+    battleDebt: 0,
     objective: 'Wake up in the bedroom.',
     questStage: 0,
     settings: {
@@ -706,6 +708,8 @@ export function normalizeState(raw) {
   state.gold = Math.max(0, Number(state.gold || 0));
   state.apples = Math.max(0, Number(state.apples || 0));
   state.kills = Math.max(0, Number(state.kills || 0));
+  state.defeats = Math.max(0, Number(state.defeats || 0));
+  state.battleDebt = Math.max(0, Number(state.battleDebt || 0));
   state.questStage = Math.max(0, Number(state.questStage || 0));
   return state;
 }
@@ -754,6 +758,9 @@ export function restAtBedroom(state) {
   state.sta = state.maxSta;
   state.wil = state.maxWil;
   state.pressure = clamp(state.pressure - 35, 0, 100);
+  state.maxSta = clamp(state.maxSta + 3, 40, 100);
+  state.maxWil = clamp(state.maxWil + 2, 40, 100);
+  state.battleDebt = Math.max(0, Number(state.battleDebt || 0) - 1);
   advanceDay(state, 22);
   state.flags.savedOnce = true;
 }
