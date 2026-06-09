@@ -52,8 +52,7 @@ export class StatusScene extends Phaser.Scene {
       `Quest   ${this.state.objective}`
     ];
 
-    this.add.text(W / 2 - panelW / 2 + 24, H / 2 - 16, statLines.join('
-'), {
+    this.add.text(W / 2 - panelW / 2 + 24, H / 2 - 16, statLines.join('\n'), {
       fontSize: compact ? '17px' : '20px',
       color: '#f5edf7',
       lineSpacing: 12,
