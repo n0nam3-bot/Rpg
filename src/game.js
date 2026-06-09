@@ -5,11 +5,12 @@ import { CorridorScene } from './corridor.js';
 import { BattleScene } from './battle.js';
 import { StatusScene } from './status.js';
 import { SettingsScene } from './settings.js';
+import { DecisionScene } from './decision.js';
 
 const config = {
   type: Phaser.AUTO,
   parent: 'game',
-  backgroundColor: '#060309',
+  backgroundColor: '#0b0910',
   pixelArt: true,
   roundPixels: true,
   physics: {
@@ -32,14 +33,15 @@ const config = {
     CorridorScene,
     BattleScene,
     StatusScene,
-    SettingsScene
+    SettingsScene,
+    DecisionScene
   ]
 };
 
 if (typeof window !== 'undefined' && window.addEventListener) {
   window.addEventListener('load', () => {
-    window.__unholyMaidenGame = new Phaser.Game(config);
+    window.__shaiaRouteGame = new Phaser.Game(config);
   });
 } else {
-  globalThis.__unholyMaidenGame = new Phaser.Game(config);
+  globalThis.__shaiaRouteGame = new Phaser.Game(config);
 }
