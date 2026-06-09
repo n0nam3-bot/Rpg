@@ -1,0 +1,6 @@
+Shaia Route Reclaimed
+----------------------
+Player/enemy/background assets © picopico256 / Ruin Runners: Shaia pack.
+Credit optional per the included readme, but attributed here anyway.
+
+This build is a custom game implementation for exploration, combat, bedroom rest, status, and settings.
