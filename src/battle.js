@@ -9,7 +9,11 @@ import {
   keyFor,
   addGothicBackdrop,
   getLayout,
-  applyCorruption
+  applyCorruption,
+  makeVirtualControls,
+  readControls,
+  makeMeter,
+  makeStaticRect
 } from './util.js';
 
 const BG_L = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/01_dungeon_left.png');
@@ -17,6 +21,7 @@ const BG_C = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/02_du
 const BG_R = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/03_dungeon_right.png');
 const HERO_IDLE = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_00_idle_stand_A01.png');
 const HERO_WALK = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_11_walk01.png');
+const HERO_RUN = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_12_run01.png');
 const HERO_ATTACKS = [
   keyFor('ruin_runners_shaia/sprites/shaia/sprites_attack/attack_01_cobination0101.png'),
   keyFor('ruin_runners_shaia/sprites/shaia/sprites_attack/attack_02_cobination0201.png'),
@@ -27,8 +32,10 @@ const HERO_ATTACKS = [
 ];
 const HERO_GUARD = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_31_guard_stand01.png');
 const HERO_HURT = keyFor('ruin_runners_shaia/sprites/shaia/sprites_damage/damage_01_damage_head.png');
+const HERO_JUMP = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_21_jump_begin01.png');
 
 const SK_IDLE = keyFor('ruin_runners_shaia/sprites/skeleton/common_01_idle01.png');
+const SK_WALK = keyFor('ruin_runners_shaia/sprites/skeleton/common_11_walk02.png');
 const SK_ATTACK = keyFor('ruin_runners_shaia/sprites/skeleton/attack_01_sword01.png');
 const SK_HURT = keyFor('ruin_runners_shaia/sprites/skeleton/damage_01_damage_head.png');
 
@@ -46,145 +53,119 @@ export class BattleScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width;
-    const H = this.scale.height;
     const layout = getLayout(this);
-    const compact = layout.compact;
+    const { W, H, compact } = layout;
 
     this._ended = false;
-    this._state = 'player';
-    this._playerBusy = false;
-    this._enemyBusy = false;
-    this._menuIndex = 0;
-    this._playerGuard = false;
-    this._playerFocus = 0;
-    this._enemyIntent = 'strike';
+    this._battleActive = false;
+    this._introTimer = 900;
     this._log = [];
-    this._turnText = 'YOUR TURN';
-    this._player = { focus: 0, guard: false };
-    this._enemy = { hp: this.encounter.hp, maxHp: this.encounter.hp, pressure: 100, focus: 50, dmg: this.encounter.dmg, intent: 'strike' };
+    this._attackIndex = 0;
+    this._playerCooldown = 0;
+    this._enemyCooldown = 1200;
+    this._enemyHurt = 0;
+    this._playerHurt = 0;
+    this._playerGuard = false;
+    this._retreatLock = false;
+    this._dir = 1;
 
     this.physics.world.setBounds(0, 0, W, H);
     this.input.addPointer(3);
 
-    addGothicBackdrop(this, { variant: 'battle', depth: -3000, fogCount: 7 });
-    this.add.image(W / 2, H / 2, BG_L).setDisplaySize(W / 2, H).setTint(0x22111a).setAlpha(0.42);
-    this.add.image(W / 2, H / 2, BG_C).setDisplaySize(W, H).setTint(0x2e1622).setAlpha(0.55);
-    this.add.image(W / 2 + 340, H / 2, BG_R).setDisplaySize(W / 2, H).setTint(0x29131d).setAlpha(0.6);
-    this.add.rectangle(W / 2, H / 2, W, H, 0x12070c, 0.52);
-    this.add.rectangle(W / 2, 520, W, 260, 0x0f0811, 0.76);
-    this.add.rectangle(W / 2, 516, W, 6, 0xf2c6ff, 0.24);
+    addGothicBackdrop(this, { variant: 'battle', depth: -3000, fogCount: 8 });
+    this.add.image(W / 2, H / 2 - 40, BG_C).setDisplaySize(W, H).setTint(0x301524).setAlpha(0.74);
+    this.add.image(W * 0.08, H / 2 - 30, BG_L).setDisplaySize(W * 0.48, H).setTint(0x22111a).setAlpha(0.36);
+    this.add.image(W * 0.92, H / 2 - 30, BG_R).setDisplaySize(W * 0.48, H).setTint(0x22111a).setAlpha(0.36);
+    this.add.rectangle(W / 2, H / 2, W, H, 0x14090f, 0.46);
+    this.add.rectangle(W / 2, 560, W, 180, 0x0c0710, 0.88);
+    this.add.rectangle(W / 2, 548, W, 6, 0xeec8ff, 0.22);
 
-    this.add.text(24, 16, 'TURN BATTLE', { fontSize: '30px', color: '#fff', fontStyle: 'bold' }).setScrollFactor(0);
-    this.subtitle = this.add.text(24, 52, `${this.encounter.label} • Day ${this.state.day} • Losses carry consequences`, { fontSize: '14px', color: '#ead7ef' }).setScrollFactor(0);
-    this.turnBanner = this.add.text(W / 2, 28, this._turnText, { fontSize: '22px', color: '#ffdaef', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0);
+    this.ground = makeStaticRect(this, W / 2, 592, W, 56);
 
-    this.player = this.add.image(260, 435, HERO_IDLE).setScale(0.88).setOrigin(0.5, 0.96);
-    this.enemy = this.add.image(1020, 438, SK_IDLE).setScale(0.88).setOrigin(0.5, 0.96);
+    this.player = this.physics.add.sprite(260, 492, HERO_IDLE).setScale(0.9).setCollideWorldBounds(true);
+    this.player.body.setSize(70, 88, true);
+    this.player.setMaxVelocity(260, 700);
+    this.player.setDragX(120);
+    this.physics.add.collider(this.player, this.ground);
 
-    this.playerName = this.add.text(140, 218, 'SHAIA', { fontSize: '20px', color: '#fff', fontStyle: 'bold' });
-    this.enemyName = this.add.text(922, 218, this.encounter.label.toUpperCase(), { fontSize: '20px', color: '#fff', fontStyle: 'bold' });
-    this.enemyIntentText = this.add.text(922, 218, 'INTENT: ---', { fontSize: '13px', color: '#ead7ef' });
-    this.enemyIntentText.setY(242);
+    this.enemy = this.physics.add.sprite(W - 270, 492, SK_IDLE).setScale(0.9).setCollideWorldBounds(true);
+    this.enemy.body.setSize(72, 88, true);
+    this.enemy.setMaxVelocity(240, 700);
+    this.enemy.setDragX(100);
+    this.physics.add.collider(this.enemy, this.ground);
 
-    this.playerHp = this._makeBar(140, 252, 280, 'HP', 0xff7db0);
-    this.playerSta = this._makeBar(140, 280, 280, 'STA', 0x8ddaff);
-    this.playerWil = this._makeBar(140, 308, 280, 'WIL', 0xc4ff96);
-    this.enemyHp = this._makeBar(922, 252, 280, 'HP', 0xff7a68);
-    this.enemySta = this._makeBar(922, 280, 280, 'PRESS', 0xf6c46d);
-    this.enemyWil = this._makeBar(922, 308, 280, 'FOCUS', 0xc4b2ff);
-    this.enemyCor = this._makeBar(922, 336, 280, 'CORR', 0xcf7bff);
+    this.controls = makeVirtualControls(this, 'battle');
+    this.keys = this.input.keyboard.addKeys('A,D,W,S,SPACE,SHIFT,E,ESC,ENTER,X');
 
-    this.logPanel = this.add.rectangle(W / 2, 610, 1200, 92, 0x160b16, 0.92).setStrokeStyle(2, 0xf4c7ff, 0.45);
-    this.logText = this.add.text(60, 570, '', { fontSize: '15px', color: '#fff', wordWrap: { width: 1160 } });
+    this.title = this.add.text(24, 16, 'REALTIME BATTLE', { fontSize: '30px', color: '#fff', fontStyle: 'bold' }).setScrollFactor(0).setDepth(5000);
+    this.subtitle = this.add.text(24, 52, `${this.encounter.label} • Day ${this.state.day} • Stay close and keep moving`, { fontSize: '14px', color: '#ead7ef' }).setScrollFactor(0).setDepth(5000);
+    this.banner = this.add.text(W / 2, 32, 'ENTER THE CHAMBER', { fontSize: '22px', color: '#ffdaef', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(5000);
 
-    this.actions = ['Attack', 'Guard', 'Focus', 'Item', 'Flee'];
-    this.cmdButtons = [];
+    this.playerName = this.add.text(120, 214, 'SHAIA', { fontSize: '20px', color: '#fff', fontStyle: 'bold' });
+    this.enemyName = this.add.text(W - 360, 214, this.encounter.label.toUpperCase(), { fontSize: '20px', color: '#fff', fontStyle: 'bold' });
+    this.playerHp = makeMeter(this, 120, 252, 280, 'HP', 0xff7db0);
+    this.playerSta = makeMeter(this, 120, 280, 280, 'STA', 0x8ddaff);
+    this.playerWil = makeMeter(this, 120, 308, 280, 'WIL', 0xc4ff96);
+    this.enemyHp = makeMeter(this, W - 360, 252, 280, 'HP', 0xff7a68);
+    this.enemySta = makeMeter(this, W - 360, 280, 280, 'PRESS', 0xf6c46d);
+    this.enemyWil = makeMeter(this, W - 360, 308, 280, 'FOCUS', 0xc4b2ff);
+    this.enemyCor = makeMeter(this, W - 360, 336, 280, 'CORR', 0xcf7bff);
 
-    if (compact) {
-      const topY = 648;
-      const bottomY = 696;
-      const firstRow = [
-        { index: 0, x: 186, w: 158, h: 56 },
-        { index: 1, x: 394, w: 158, h: 56 },
-        { index: 2, x: 602, w: 158, h: 56 }
-      ];
-      const secondRow = [
-        { index: 3, x: 450, w: 158, h: 54 },
-        { index: 4, x: 658, w: 158, h: 54 }
-      ];
-      firstRow.forEach((cfg) => {
-        const label = this.actions[cfg.index];
-        const btn = createTextButton(this, cfg.x, topY, cfg.w, cfg.h, `${cfg.index + 1}. ${label}`, () => this._chooseAction(cfg.index), {
-          fill: cfg.index === 0 ? 0x5a2f58 : 0x2b243a,
-          stroke: 0xf0c6ff,
-          fontSize: '14px'
-        });
-        this.cmdButtons.push(btn);
-      });
-      secondRow.forEach((cfg) => {
-        const label = this.actions[cfg.index];
-        const btn = createTextButton(this, cfg.x, bottomY, cfg.w, cfg.h, `${cfg.index + 1}. ${label}`, () => this._chooseAction(cfg.index), {
-          fill: 0x2b243a,
-          stroke: 0xf0c6ff,
-          fontSize: '14px'
-        });
-        this.cmdButtons.push(btn);
-      });
-    } else {
-      const x0 = 232;
-      const y0 = 676;
-      const gap = 166;
-      this.actions.forEach((label, i) => {
-        const btn = createTextButton(this, x0 + i * gap, y0, 146, 52, `${i + 1}. ${label}`, () => this._chooseAction(i), {
-          fill: i === 0 ? 0x5a2f58 : 0x2b243a,
-          stroke: 0xf0c6ff,
-          fontSize: '15px'
-        });
-        this.cmdButtons.push(btn);
-      });
-    }
+    this.logPanel = this.add.rectangle(W / 2, H - 52, Math.min(W - 40, 1200), 84, 0x160b16, 0.92).setStrokeStyle(2, 0xf4c7ff, 0.45).setScrollFactor(0).setDepth(5000);
+    this.logText = this.add.text(60, H - 92, '', { fontSize: '14px', color: '#fff', wordWrap: { width: W - 120 } }).setScrollFactor(0).setDepth(5001);
 
-    this.menuHint = this.add.text(W - 24, 18, '1-5 / Click / Tap • Guard lowers damage • Losses reduce future max STA/WIL', { fontSize: '13px', color: '#e7d6ea' }).setOrigin(1, 0);
-    this.input.keyboard.on('keydown-ONE', () => this._chooseAction(0));
-    this.input.keyboard.on('keydown-TWO', () => this._chooseAction(1));
-    this.input.keyboard.on('keydown-THREE', () => this._chooseAction(2));
-    this.input.keyboard.on('keydown-FOUR', () => this._chooseAction(3));
-    this.input.keyboard.on('keydown-FIVE', () => this._chooseAction(4));
-    this.input.keyboard.on('keydown-ESC', () => this._chooseAction(4));
+    this.retreatBtn = createTextButton(this, W - 84, 54, 128, 50, 'RETREAT', () => this._retreat(), {
+      fill: 0x492337,
+      stroke: 0xffb8d6,
+      fontSize: compact ? '14px' : '15px',
+      depth: 6000
+    });
 
-    this._logPush(`A ${this.encounter.label} blocks the route.`);
-    this._refreshAll();
+    this._player = {
+      hp: this.state.hp,
+      maxHp: this.state.maxHp,
+      sta: this.state.sta,
+      maxSta: this.state.maxSta,
+      wil: this.state.wil,
+      maxWil: this.state.maxWil,
+      guard: false,
+      facing: 1,
+      attacking: 0,
+      hurt: 0
+    };
+    this._enemy = {
+      hp: Math.max(20, this.encounter.hp),
+      maxHp: Math.max(20, this.encounter.hp),
+      dmg: Math.max(4, this.encounter.dmg),
+      speed: Math.max(45, this.encounter.speed || 60),
+      state: 'approach',
+      intent: 'strike',
+      guard: false,
+      attacking: 0,
+      hurt: 0,
+      xBias: 0
+    };
+
+    this._logPush(`A ${this.encounter.label} emerges from the gate.`);
+    this._refreshUI();
     saveState(this.state);
-    this.time.delayedCall(80, () => this._startEnemyIntent());
+    this.time.delayedCall(160, () => {
+      this._battleActive = true;
+      this._logPush('Fight now. Keep moving.');
+      this._refreshUI();
+    });
   }
 
-  _makeBar(x, y, width, label, color) {
-    const container = this.add.container(x, y);
-    const bg = this.add.rectangle(0, 0, width, 18, 0x100b16, 0.92).setOrigin(0, 0.5);
-    const fill = this.add.rectangle(0, 0, width, 18, color, 1).setOrigin(0, 0.5);
-    const txt = this.add.text(8, 0, label, { fontSize: '12px', color: '#fff', fontStyle: 'bold' }).setOrigin(0, 0.5);
-    container.add([bg, fill, txt]);
-    return { container, bg, fill, txt, width };
-  }
-
-  _setBar(bar, value, max) {
-    const pct = clamp(max > 0 ? value / max : 0, 0, 1);
-    bar.fill.displayWidth = bar.width * pct;
-    bar.txt.setText(`${bar.txt.text.split('  ')[0]}  ${Math.round(value)} / ${Math.round(max)}`);
-  }
-
-  _refreshAll(extraMsg = '') {
-    this._setBar(this.playerHp, this.state.hp, this.state.maxHp);
-    this._setBar(this.playerSta, this.state.sta, this.state.maxSta);
-    this._setBar(this.playerWil, this.state.wil, this.state.maxWil);
-    this._setBar(this.enemyHp, this._enemy.hp, this._enemy.maxHp);
-    this._setBar(this.enemySta, this._enemy.pressure, 100);
-    this._setBar(this.enemyWil, this._enemy.focus, 100);
-    if (this.enemyCor) this._setBar(this.enemyCor, this.state.corruption || 0, 100);
-    this.subtitle.setText(`${this.encounter.label} • Day ${this.state.day} • Defeats ${this.state.defeats || 0} • Pressure ${Math.round(this.state.pressure)}`);
-    this.turnBanner.setText(this._turnText);
-    if (this.enemyIntentText) this.enemyIntentText.setText(`INTENT: ${(this._enemy && this._enemy.intent || '---').toUpperCase()}`);
+  _refreshUI(extraMsg = '') {
+    this.playerHp.set(this.state.hp, this.state.maxHp);
+    this.playerSta.set(this.state.sta, this.state.maxSta);
+    this.playerWil.set(this.state.wil, this.state.maxWil);
+    this.enemyHp.set(this._enemy.hp, this._enemy.maxHp);
+    this.enemySta.set(this.state.pressure, 100);
+    this.enemyWil.set(Math.max(0, 100 - Math.round(this._enemy.hurt / 4)), 100);
+    this.enemyCor.set(this.state.corruption || 0, 100);
+    this.subtitle.setText(`${this.encounter.label} • Day ${this.state.day} • Pressure ${Math.round(this.state.pressure)} • Corruption ${Math.round(this.state.corruption || 0)}`);
+    this.banner.setText(this._battleActive ? 'MOVE • ATTACK • GUARD' : 'ENTER THE CHAMBER');
     const lines = this._log.slice(-4);
     if (extraMsg) lines.push(extraMsg);
     this.logText.setText(lines.join('\n'));
@@ -194,163 +175,86 @@ export class BattleScene extends Phaser.Scene {
     if (!msg) return;
     this._log.push(msg);
     if (this._log.length > 8) this._log.shift();
-    this._refreshAll();
+    this._refreshUI();
   }
 
-  _playHit(sprite, key, dx = 0, dy = 0) {
+  _facePlayer(sprite, targetX) {
     if (!sprite) return;
-    if (dx || dy) sprite.x += dx, sprite.y += dy;
-    if (key && sprite.anims && this.anims.exists(key)) sprite.anims.play(key, true);
-    this.tweens.add({ targets: sprite, x: sprite.x - dx, y: sprite.y - dy, duration: 120, ease: 'Quad.easeOut' });
-  }
-
-  _startEnemyIntent() {
-    if (this._ended) return;
-    this._turnText = 'ENEMY TURN';
-    this._refreshAll('Enemy planning...');
-    const intents = ['strike', 'strike', 'guard', 'feint', 'strike'];
-    if ((this.state.pressure || 0) > 60) intents.push('heavy');
-    if ((this.state.defeats || 0) > 0) intents.push('heavy');
-    this._enemy.intent = intents[Phaser.Math.Between(0, intents.length - 1)];
-    this.time.delayedCall(600, () => this._resolveEnemyTurn());
-  }
-
-  _chooseAction(index) {
-    if (this._ended || this._state !== 'player' || this._busy) return;
-    this._busy = true;
-    const act = this.actions[index] || 'Attack';
-    if (act === 'Attack') return this._playerAttack();
-    if (act === 'Guard') return this._playerGuard();
-    if (act === 'Focus') return this._playerFocus();
-    if (act === 'Item') return this._playerItem();
-    if (act === 'Flee') return this._playerFlee();
+    sprite.setFlipX(targetX < sprite.x);
   }
 
   _playerAttack() {
-    this._turnText = 'YOUR TURN — ATTACK';
-    this._refreshAll('Shaia attacks.');
-    this.player.anims.play('shaia-attack-1', true);
-    this.tweens.add({ targets: this.player, x: this.player.x + 18, y: this.player.y - 6, yoyo: true, duration: 120 });
-    this.time.delayedCall(220, () => {
-      const focusBonus = Math.floor(this._player.focus / 3);
-      const damage = 9 + Math.floor(this.state.day * 1.4) + focusBonus + (this.state.battleDebt ? 1 : 0);
-      const guard = this._enemy.intent === 'guard' ? 0.7 : 1.0;
-      const dealt = Math.max(2, Math.round(damage * guard));
-      this._enemy.hp = clamp(this._enemy.hp - dealt, 0, this._enemy.maxHp);
-      this._player.focus = clamp(this._player.focus + 6, 0, 100);
-      this.state.sta = clamp(this.state.sta - 5, 0, this.state.maxSta);
-      this.state.pressure = clamp(this.state.pressure + 1, 0, 100);
-      applyCorruption(this.state, Math.max(0, Math.ceil(dealt / 14) - 1));
-      this._enemy.hurt = 220;
-      this.enemy.anims.play('skeleton-hurt', true);
-      this._playHit(this.enemy, 'skeleton-hurt', 12, -6);
-      this._logPush(`Attack deals ${dealt} damage.`);
-      if (this.state.settings.shake) this.cameras.main.shake(50, 0.0035);
-      this.time.delayedCall(150, () => this.player.anims.play('shaia-idle', true));
-      this._finishPlayerTurn();
-    });
-  }
-
-  _playerGuard() {
-    this._turnText = 'YOUR TURN — GUARD';
-    this._player.guard = true;
-    this.state.sta = clamp(this.state.sta + 6, 0, this.state.maxSta);
-    this.state.wil = clamp(this.state.wil + 2, 0, this.state.maxWil);
-    this.player.anims.play('shaia-guard', true);
-    this._logPush('Guard up. Damage will be reduced.');
-    this._finishPlayerTurn();
-  }
-
-  _playerFocus() {
-    this._turnText = 'YOUR TURN — FOCUS';
-    this._player.focus = clamp(this._player.focus + 18, 0, 100);
-    this.state.sta = clamp(this.state.sta + 10, 0, this.state.maxSta);
-    this.state.wil = clamp(this.state.wil + 4, 0, this.state.maxWil);
-    this.player.anims.play('shaia-idle', true);
-    this._logPush('Focus sharpens the next strike.');
-    this._finishPlayerTurn();
-  }
-
-  _playerItem() {
-    this._turnText = 'YOUR TURN — ITEM';
-    if (this.state.apples > 0) {
-      this.state.apples -= 1;
-      this.state.hp = clamp(this.state.hp + 24, 0, this.state.maxHp);
-      this.state.sta = clamp(this.state.sta + 16, 0, this.state.maxSta);
-      this.state.pressure = clamp(this.state.pressure - 4, 0, 100);
-      this._logPush('Ate an apple and recovered.');
-    } else {
-      this._logPush('No apples left.');
-    }
-    this._finishPlayerTurn();
-  }
-
-  _playerFlee() {
-    this._turnText = 'YOUR TURN — FLEE';
-    const chance = 0.45 + ((this.state.sta || 0) / (this.state.maxSta || 100)) * 0.2 - (this._enemy.intent === 'heavy' ? 0.12 : 0);
-    if (Math.random() < chance) {
-      this._logPush('You escaped the fight.');
-      this.state.pressure = clamp(this.state.pressure + 4, 0, 100);
+    if (this._player.attacking > 0 || this._player.hurt > 0 || this._playerCooldown > 0 || this._ended) return;
+    this._playerCooldown = 280;
+    this._player.attacking = 220;
+    this._attackIndex = (this._attackIndex + 1) % HERO_ATTACKS.length;
+    const attackKey = ['shaia-attack-1', 'shaia-attack-2', 'shaia-attack-3', 'shaia-attack-4', 'shaia-attack-5', 'shaia-attack-6'][this._attackIndex];
+    if (this.anims.exists(attackKey)) this.player.anims.play(attackKey, true);
+    this.player.setVelocityX(this.player.flipX ? -140 : 140);
+    this.time.delayedCall(120, () => {
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.enemy.x, this.enemy.y);
+      const closeEnough = dist < 150 && Math.abs(this.player.y - this.enemy.y) < 72;
+      if (closeEnough) {
+        const base = 8 + Math.floor(this.state.day * 1.35) + Math.floor((this.state.pressure || 0) / 18);
+        const dealt = Math.max(2, Math.round(base * (this._player.guard ? 0.85 : 1)));
+        this._enemy.hp = clamp(this._enemy.hp - dealt, 0, this._enemy.maxHp);
+        this._enemy.hurt = 220;
+        this._enemy.attacking = 0;
+        this.enemy.setVelocityX(this.player.flipX ? 170 : -170);
+        if (this.anims.exists('skeleton-hurt')) this.enemy.anims.play('skeleton-hurt', true);
+        this.tweens.add({ targets: this.enemy, x: this.enemy.x + (this.player.flipX ? 40 : -40), duration: 90, yoyo: true });
+        applyCorruption(this.state, Math.max(0, Math.ceil(dealt / 16) - 1));
+        this.state.sta = clamp(this.state.sta - 6, 0, this.state.maxSta);
+        this.state.pressure = clamp(this.state.pressure + 1, 0, 100);
+        this._logPush(`Hit for ${dealt}.`);
+      } else {
+        this.state.sta = clamp(this.state.sta - 4, 0, this.state.maxSta);
+        this.state.pressure = clamp(this.state.pressure + 1, 0, 100);
+        this._logPush('Attack missed the opening.');
+      }
+      if (this.anims.exists('shaia-idle')) this.player.anims.play('shaia-idle', true);
+      this.player.setVelocityX(0);
       saveState(this.state);
-      this._ended = true;
-      this._showResult('Escape', 'You retreat to the corridor.', 0x18243a);
-      this.time.delayedCall(1100, () => sceneToNext(this, 'CorridorScene', { state: this.state, spawnX: this.returnX || 180 }));
-    } else {
-      this._logPush('Escape failed.');
-      this.state.pressure = clamp(this.state.pressure + 3, 0, 100);
-      this.time.delayedCall(180, () => this._resolveEnemyTurn(true));
-    }
-  }
-
-  _finishPlayerTurn() {
-    this.state.sta = clamp(this.state.sta, 0, this.state.maxSta);
-    this.state.wil = clamp(this.state.wil, 0, this.state.maxWil);
-    this._refreshAll();
-    saveState(this.state);
-    this._busy = false;
-    if (this._checkEnd()) return;
-    this._state = 'enemy';
-    this.time.delayedCall(380, () => this._startEnemyIntent());
-  }
-
-  _resolveEnemyTurn(fromMissedFlee = false) {
-    if (this._ended) return;
-    this._state = 'enemy';
-    const guard = this._player.guard ? 0.55 : 1.0;
-    let dmg = this._enemy.dmg;
-    if (this._enemy.intent === 'heavy') dmg += 5;
-    if (this._enemy.intent === 'feint') dmg = Math.max(2, Math.floor(dmg * 0.55));
-    if (this._enemy.intent === 'guard') {
-      this._enemy.focus = clamp(this._enemy.focus + 8, 0, 100);
-      this._enemy.pressure = clamp(this._enemy.pressure - 4, 0, 100);
-      this._logPush('Enemy guarded and recovered.');
-    } else {
-      const dealt = Math.max(1, Math.round(dmg * guard));
-      this._logPush(fromMissedFlee ? `Enemy punished the failed escape for ${dealt}.` : `Enemy strikes for ${dealt}.`);
-      applyDamage(this.state, dealt, Math.ceil(dealt * 0.35), Math.ceil(dealt * 0.18), 4 + Math.ceil(dealt * 0.2));
-      applyCorruption(this.state, this._enemy.intent === 'heavy' ? 4 : 2);
-      this.player.anims.play('shaia-hurt', true);
-      this._playHit(this.player, 'shaia-hurt', -10, -4);
-      if (this.state.settings.shake) this.cameras.main.shake(60, 0.004);
-      this.time.delayedCall(120, () => this.player.anims.play('shaia-idle', true));
-    }
-
-    this._player.guard = false;
-    this.state.pressure = clamp(this.state.pressure + (this._enemy.intent === 'heavy' ? 4 : 2), 0, 100);
-    this.state.battleDebt = Math.max(0, Number(this.state.battleDebt || 0) + (fromMissedFlee ? 1 : 0));
-    this._refreshAll();
-    saveState(this.state);
-    if (this._checkEnd()) return;
-
-    this._state = 'player';
-    this._turnText = 'YOUR TURN';
-    this.time.delayedCall(260, () => {
-      this._busy = false;
-      this._refreshAll();
+      this._checkEnd();
     });
+  }
+
+  _enemyAttack() {
+    if (this._ended || this._enemy.attacking > 0 || this._enemy.hurt > 0 || !this._battleActive) return;
+    this._enemy.attacking = 320;
+    this._enemy.intent = this.state.pressure > 60 ? 'heavy' : 'strike';
+    if (this.anims.exists('skeleton-attack')) this.enemy.anims.play('skeleton-attack', true);
+    this._logPush(`${this.encounter.label} attacks.`);
+    this.time.delayedCall(140, () => {
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.enemy.x, this.enemy.y);
+      if (dist > 170) return;
+      let dmg = this._enemy.dmg + (this._enemy.intent === 'heavy' ? 5 : 0);
+      if (this._player.guard) dmg = Math.max(1, Math.round(dmg * 0.55));
+      applyDamage(this.state, dmg, Math.ceil(dmg * 0.35), Math.ceil(dmg * 0.18), this._enemy.intent === 'heavy' ? 4 : 2);
+      applyCorruption(this.state, this._enemy.intent === 'heavy' ? 4 : 2);
+      this._player.hurt = 220;
+      if (this.anims.exists('shaia-hurt')) this.player.anims.play('shaia-hurt', true);
+      this.tweens.add({ targets: this.player, x: this.player.x + (this.enemy.x > this.player.x ? -20 : 20), duration: 90, yoyo: true });
+      if (this.state.settings.shake) this.cameras.main.shake(40, 0.0035);
+      this._logPush(`You take ${dmg}.`);
+      saveState(this.state);
+      this._checkEnd();
+    });
+  }
+
+  _retreat() {
+    if (this._ended || this._retreatLock) return;
+    this._retreatLock = true;
+    this.state.pressure = clamp(this.state.pressure + 8, 0, 100);
+    this.state.battleDebt = Math.max(0, Number(this.state.battleDebt || 0) + 1);
+    applyCorruption(this.state, 2);
+    this._logPush('Retreating to the corridor.');
+    saveState(this.state);
+    this.time.delayedCall(220, () => sceneToNext(this, 'CorridorScene', { state: this.state, spawnX: this.returnX || 200 }));
   }
 
   _checkEnd() {
+    if (this._ended) return true;
     if (this._enemy.hp <= 0) {
       this._finishVictory();
       return true;
@@ -368,9 +272,9 @@ export class BattleScene extends Phaser.Scene {
     rewardBattle(this.state, { gold: 25 + this.state.day * 5, pressureDrop: 14, hp: 5, sta: 10, wil: 6, kills: 1 });
     this.state.flags.corridorCleared = true;
     this.state.objective = 'The route is clearer. Return to the corridor.';
-    this._showResult('Victory', 'The route is clear. Returning to the corridor...', 0x13301a);
+    this._logPush('The chamber falls silent.');
     saveState(this.state);
-    this.time.delayedCall(1300, () => sceneToNext(this, 'CorridorScene', { state: this.state, spawnX: this.returnX || 180 }));
+    this.time.delayedCall(900, () => sceneToNext(this, 'CorridorScene', { state: this.state, spawnX: this.returnX || 200 }));
   }
 
   _finishDefeat() {
@@ -386,22 +290,109 @@ export class BattleScene extends Phaser.Scene {
     this.state.sta = clamp(Math.max(1, Math.floor(this.state.maxSta * 0.55)), 1, this.state.maxSta);
     this.state.wil = clamp(Math.max(1, Math.floor(this.state.maxWil * 0.55)), 1, this.state.maxWil);
     this.state.objective = 'Recover in the bedroom and rebuild your route.';
-    this._showResult('Defeat', 'You were forced back to the bedroom.', 0x30141a);
+    this._logPush('You are forced back to the bedroom.');
     saveState(this.state);
-    this.time.delayedCall(1500, () => sceneToNext(this, 'BedroomScene', { state: this.state, spawnX: 220 }));
+    this.time.delayedCall(1100, () => sceneToNext(this, 'BedroomScene', { state: this.state, spawnX: 220 }));
   }
 
-  _showResult(title, hint, color = 0x180c14) {
-    if (!this.resultPanel) {
-      this.resultPanel = this.add.container(this.scale.width / 2, this.scale.height / 2).setScrollFactor(0).setDepth(9000);
-      this.resultPanelBg = this.add.rectangle(0, 0, 540, 210, color, 0.95).setStrokeStyle(3, 0xffd2f1, 0.6);
-      this.resultTitle = this.add.text(0, -24, title, { fontSize: '28px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-      this.resultHint = this.add.text(0, 26, hint, { fontSize: '15px', color: '#f0e6f0', align: 'center', wordWrap: { width: 470 } }).setOrigin(0.5);
-      this.resultPanel.add([this.resultPanelBg, this.resultTitle, this.resultHint]);
-    } else {
-      this.resultPanelBg.fillColor = color;
-      this.resultTitle.setText(title);
-      this.resultHint.setText(hint);
+  _applyMovement(input, dt) {
+    if (!this._battleActive || this._ended) {
+      this.player.setVelocityX(0);
+      this.enemy.setVelocityX(0);
+      return;
     }
+
+    const accel = input.guard ? 130 : input.attack ? 170 : 220;
+    let vx = 0;
+    if (input.left) vx -= accel;
+    if (input.right) vx += accel;
+    this.player.setVelocityX(vx);
+    if (vx !== 0) this._dir = Math.sign(vx);
+    this.player.setFlipX(this._dir < 0);
+    this._player.guard = !!input.guard;
+
+    if (input.jump && (this.player.body.blocked.down || this.player.body.touching.down)) {
+      this.player.setVelocityY(-470);
+      if (this.anims.exists('shaia-jump')) this.player.anims.play('shaia-jump', true);
+    }
+
+    if (input.attack && this._playerCooldown <= 0) this._playerAttack();
+    if (input.menu && !this._retreatLock) this._retreat();
+  }
+
+  _applyAnimations() {
+    if (this._player.hurt > 0) {
+      if (this.anims.exists('shaia-hurt')) this.player.anims.play('shaia-hurt', true);
+      return;
+    }
+    if (this._player.attacking > 0) return;
+    const onGround = this.player.body.blocked.down || this.player.body.touching.down;
+    const moving = Math.abs(this.player.body.velocity.x) > 25;
+    if (!onGround) {
+      if (this.anims.exists('shaia-jump')) this.player.anims.play('shaia-jump', true);
+    } else if (moving) {
+      if (this.anims.exists('shaia-run') && Math.abs(this.player.body.velocity.x) > 170) this.player.anims.play('shaia-run', true);
+      else if (this.anims.exists('shaia-walk')) this.player.anims.play('shaia-walk', true);
+    } else if (this._player.guard && this.anims.exists('shaia-guard')) {
+      this.player.anims.play('shaia-guard', true);
+    } else if (this.anims.exists('shaia-idle')) {
+      this.player.anims.play('shaia-idle', true);
+    }
+  }
+
+  _enemyThink(dt) {
+    if (!this._battleActive || this._ended) return;
+    if (this._enemy.hurt > 0 || this._enemy.attacking > 0) return;
+
+    const dx = this.player.x - this.enemy.x;
+    const absDx = Math.abs(dx);
+    this.enemy.setFlipX(dx < 0);
+
+    if (absDx > 115) {
+      const dir = Phaser.Math.Clamp(dx, -1, 1);
+      const chase = this._enemy.speed + (this.state.pressure > 55 ? 18 : 0);
+      this.enemy.setVelocityX(dir * chase);
+      if (this.anims.exists('skeleton-walk')) this.enemy.anims.play('skeleton-walk', true);
+      return;
+    }
+
+    this.enemy.setVelocityX(0);
+    if (this._enemyCooldown <= 0) {
+      this._enemyAttack();
+      this._enemyCooldown = this.state.pressure > 55 ? 1150 : 1450;
+    } else if (this.anims.exists('skeleton-idle')) {
+      this.enemy.anims.play('skeleton-idle', true);
+    }
+  }
+
+  update(time, delta) {
+    const dt = delta || 16;
+    const input = readControls(this, this.controls);
+
+    if (this._introTimer > 0) {
+      this._introTimer -= dt;
+      if (this._introTimer <= 0) {
+        this._battleActive = true;
+        this._logPush('The fight begins.');
+      }
+    }
+
+    if (this._playerCooldown > 0) this._playerCooldown -= dt;
+    if (this._enemyCooldown > 0) this._enemyCooldown -= dt;
+    if (this._player.attacking > 0) this._player.attacking -= dt;
+    if (this._player.hurt > 0) this._player.hurt -= dt;
+    if (this._enemy.attacking > 0) this._enemy.attacking -= dt;
+    if (this._enemy.hurt > 0) this._enemy.hurt -= dt;
+
+    this._applyMovement(input, dt);
+    this._applyAnimations();
+    this._enemyThink(dt);
+
+    if (this._player.hurt <= 0 && this._enemy.hurt <= 0) {
+      const near = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.enemy.x, this.enemy.y);
+      if (near < 145 && input.attack && this._playerCooldown <= 0) this._playerAttack();
+    }
+
+    this._refreshUI();
   }
 }

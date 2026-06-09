@@ -4,7 +4,6 @@ import {
   normalizeState,
   makeVirtualControls,
   readControls,
-  createTextButton,
   makeMeter,
   makeStaticRect,
   sceneToNext,
@@ -17,8 +16,6 @@ import {
 const BG_L = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/01_dungeon_left.png');
 const BG_C = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/02_dungeon_center.png');
 const BG_R = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/03_dungeon_right.png');
-const BARREL = keyFor('ruin_runners_shaia/sprites/prop/barrel_001.png');
-const CHEST = keyFor('ruin_runners_shaia/sprites/prop/chest_open01.png');
 const HERO = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_00_idle_stand_A01.png');
 const WALK = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_11_walk01.png');
 const RUN = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_12_run01.png');
@@ -73,26 +70,31 @@ export class BedroomScene extends Phaser.Scene {
     this.interactables = [
       { x: 620, y: 494, label: 'Bed', action: () => this.sleep(), prompt: 'Rest to lower pressure and advance the day.' },
       { x: 1020, y: 442, label: 'Mirror', action: () => sceneToNext(this, 'StatusScene', { state: this.state, returnTo: 'BedroomScene' }), prompt: 'Check your route status.' },
-      { x: 1540, y: 442, label: 'Chest', action: () => this.saveHere(), prompt: 'Save your progress.' },
+      { x: 1540, y: 442, label: 'Ward Altar', action: () => this.saveHere(), prompt: 'Save your progress.' },
       { x: 2060, y: 494, label: 'Door', action: () => sceneToNext(this, 'CorridorScene', { state: this.state, spawnX: 180 }), prompt: 'Step into the corridor.' }
     ];
 
     this.interactGfx = this.add.group();
-    this.interactables.forEach((obj, i) => {
-      const marker = this.add.rectangle(obj.x, obj.y - 58, 86, 96, 0x261627, 0.4).setStrokeStyle(2, 0xf5c7ff, 0.35);
+    this.interactables.forEach((obj) => {
+      const marker = this.add.rectangle(obj.x, obj.y - 58, 98, 96, 0x261627, 0.42).setStrokeStyle(2, 0xf5c7ff, 0.35);
       const text = this.add.text(obj.x, obj.y - 100, obj.label, { fontSize: '15px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-      const note = this.add.text(obj.x, obj.y + 38, 'Press E', { fontSize: '12px', color: '#e4d2ec' }).setOrigin(0.5);
+      const note = this.add.text(obj.x, obj.y + 38, 'Press E / USE', { fontSize: '12px', color: '#e4d2ec' }).setOrigin(0.5);
       this.interactGfx.addMultiple([marker, text, note]);
       obj.marker = marker;
       obj.text = text;
       obj.note = note;
     });
 
+    // Replace random clutter with bedroom-specific shapes.
     this.bedBase = this.add.rectangle(620, 504, 220, 56, 0x5f3a4d, 1).setStrokeStyle(3, 0xf8c6ff, 0.45);
     this.bedPillow = this.add.rectangle(568, 484, 74, 22, 0xf2d7e6, 1).setStrokeStyle(2, 0xffdff1, 0.4);
     this.bedBlanket = this.add.rectangle(642, 494, 126, 34, 0x7d4a62, 0.95).setStrokeStyle(2, 0xf2c6ff, 0.25);
-    this.barrel = this.add.image(1240, 560, BARREL).setScale(0.92).setAlpha(0.95);
-    this.chest = this.add.image(1540, 510, CHEST).setScale(0.95).setAlpha(0.96);
+    this.saveAltar = this.add.rectangle(1540, 508, 110, 68, 0x211220, 1).setStrokeStyle(3, 0xf5c7ff, 0.35);
+    this.saveOrb = this.add.circle(1540, 476, 16, 0xf2c6ff, 0.22).setStrokeStyle(2, 0xf2c6ff, 0.28);
+    this.saveCandles = [
+      this.add.rectangle(1512, 530, 6, 26, 0xf4e8ff, 0.9),
+      this.add.rectangle(1568, 530, 6, 26, 0xf4e8ff, 0.9)
+    ];
 
     this.title = this.add.text(24, 18, 'BEDROOM', { fontSize: '28px', color: '#fff', fontStyle: 'bold' }).setScrollFactor(0).setDepth(5000);
     this.dayText = this.add.text(24, 50, '', { fontSize: '14px', color: '#d7c7dc' }).setScrollFactor(0).setDepth(5000);
