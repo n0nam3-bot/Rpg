@@ -73,9 +73,9 @@ export class BattleScene extends Phaser.Scene {
     this.input.addPointer(3);
 
     addGothicBackdrop(this, { variant: 'battle', depth: -3000, fogCount: 8 });
-    this.add.image(W / 2, H / 2 - 40, BG_C).setDisplaySize(W, H).setTint(0x301524).setAlpha(0.74);
-    this.add.image(W * 0.08, H / 2 - 30, BG_L).setDisplaySize(W * 0.48, H).setTint(0x22111a).setAlpha(0.36);
-    this.add.image(W * 0.92, H / 2 - 30, BG_R).setDisplaySize(W * 0.48, H).setTint(0x22111a).setAlpha(0.36);
+    this.add.image(W / 2, H / 2 - 40, BG_C).setDisplaySize(W, H).setTint(0x301524).setAlpha(0.18);
+    this.add.image(W * 0.08, H / 2 - 30, BG_L).setDisplaySize(W * 0.48, H).setTint(0x22111a).setAlpha(0.12);
+    this.add.image(W * 0.92, H / 2 - 30, BG_R).setDisplaySize(W * 0.48, H).setTint(0x22111a).setAlpha(0.12);
     this.add.rectangle(W / 2, H / 2, W, H, 0x14090f, 0.46);
     this.add.rectangle(W / 2, 560, W, 180, 0x0c0710, 0.88);
     this.add.rectangle(W / 2, 548, W, 6, 0xeec8ff, 0.22);

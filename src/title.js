@@ -14,10 +14,10 @@ export class TitleScene extends Phaser.Scene {
     const { W, H, compact, pad } = layout;
 
     addGothicBackdrop(this, { variant: 'title', depth: -3000, fogCount: 6 });
-    this.add.image(W / 2, H / 2, BG).setDisplaySize(W, H).setAlpha(0.28).setTint(0x8b4b77);
+    this.add.image(W / 2, H / 2, BG).setDisplaySize(W, H).setAlpha(0.10).setTint(0x8b4b77);
     this.add.rectangle(W / 2, H / 2, W, H, 0x0b0711, 0.48);
 
-    this.add.image(W * (compact ? 0.78 : 0.79), H * 0.56, HERO).setScale(compact ? 0.82 : 0.95).setAlpha(0.92);
+    this.add.image(W * (compact ? 0.78 : 0.79), H * 0.56, HERO).setScale(compact ? 0.82 : 0.95).setAlpha(0.88);
     this.add.image(W * (compact ? 0.80 : 0.81), H * 0.29, ALT).setScale(compact ? 0.46 : 0.55).setAlpha(0.12);
 
     const leftX = compact ? W / 2 : 58;

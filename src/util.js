@@ -467,12 +467,13 @@ export function createTextButton(scene, x, y, w, h, label, onPress, opts = {}) {
   const fill = opts.fill || 0x2c1f38;
   const stroke = opts.stroke || 0xf0c6ff;
   const textColor = opts.textColor || '#ffffff';
-  const group = scene.add.container(x, y).setScrollFactor(0).setDepth(opts.depth || 6000);
-  const pad = Math.max(18, Math.round(Math.min(w, h) * 0.25));
+  const depth = opts.depth ?? 9100;
+  const group = scene.add.container(x, y).setScrollFactor(0).setDepth(depth);
+  const pad = Math.max(20, Math.round(Math.min(w, h) * 0.28));
   const hitW = w + pad * 2;
   const hitH = h + pad * 2;
-  const hit = scene.add.rectangle(0, 0, hitW, hitH, 0x000000, 0.001).setOrigin(0.5);
-  const rect = scene.add.rectangle(0, 0, w, h, fill, 0.96).setOrigin(0.5);
+  const hit = scene.add.rectangle(0, 0, hitW, hitH, 0x000000, 0.001).setOrigin(0.5).setDepth(depth + 1);
+  const rect = scene.add.rectangle(0, 0, w, h, fill, 0.96).setOrigin(0.5).setDepth(depth + 2);
   rect.setStrokeStyle(2, stroke, 0.9);
   const text = scene.add.text(0, 0, label, {
     fontSize: opts.fontSize || '16px',
@@ -480,20 +481,25 @@ export function createTextButton(scene, x, y, w, h, label, onPress, opts = {}) {
     fontStyle: 'bold',
     align: 'center',
     wordWrap: { width: Math.max(40, w - 18) }
-  }).setOrigin(0.5);
+  }).setOrigin(0.5).setDepth(depth + 3);
   group.add([hit, rect, text]);
   const fire = () => { if (onPress) onPress(); };
-  hit.setInteractive(new Phaser.Geom.Rectangle(-hitW / 2, -hitH / 2, hitW, hitH), Phaser.Geom.Rectangle.Contains, {
-    useHandCursor: true
-  });
-  hit.on('pointerdown', () => {
-    rect.setAlpha(0.88);
-    fire();
-  });
-  hit.on('pointerup', () => rect.setAlpha(0.96));
-  hit.on('pointerupoutside', () => rect.setAlpha(0.96));
-  hit.on('pointerover', () => rect.setAlpha(1));
-  hit.on('pointerout', () => rect.setAlpha(0.96));
+  const bindInteractive = (obj) => {
+    obj.setInteractive(new Phaser.Geom.Rectangle(-hitW / 2, -hitH / 2, hitW, hitH), Phaser.Geom.Rectangle.Contains, {
+      useHandCursor: true
+    });
+    obj.on('pointerdown', (pointer) => {
+      pointer?.event?.preventDefault?.();
+      rect.setAlpha(0.88);
+      fire();
+    });
+    obj.on('pointerup', () => rect.setAlpha(0.96));
+    obj.on('pointerupoutside', () => rect.setAlpha(0.96));
+    obj.on('pointerover', () => rect.setAlpha(1));
+    obj.on('pointerout', () => rect.setAlpha(0.96));
+  };
+  bindInteractive(hit);
+  bindInteractive(rect);
   return { group, rect, text, hit, fire };
 }
 
@@ -517,6 +523,15 @@ export function makeVirtualControls(scene, mode = 'explore') {
     interact: false,
     menu: false,
   };
+  const pulses = {
+    left: false,
+    right: false,
+    jump: false,
+    attack: false,
+    guard: false,
+    interact: false,
+    menu: false,
+  };
 
   const container = scene.add.container(0, 0).setScrollFactor(0).setDepth(7000).setVisible(visible);
   const buttons = {};
@@ -532,7 +547,7 @@ export function makeVirtualControls(scene, mode = 'explore') {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(7002);
     container.add([rect, txt]);
 
-    const press = () => { state[key] = true; rect.setAlpha(0.96); };
+    const press = () => { state[key] = true; pulses[key] = true; rect.setAlpha(0.96); };
     const release = () => { state[key] = false; rect.setAlpha(0.78); };
     rect.setInteractive(new Phaser.Geom.Rectangle(-(bw * buttonScale) / 2, -(bh * buttonScale) / 2, bw * buttonScale, bh * buttonScale), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
     rect.on('pointerdown', press);
@@ -583,16 +598,25 @@ export function makeVirtualControls(scene, mode = 'explore') {
   return {
     visible,
     state,
+    pulses,
     container,
     buttons,
     destroy() {
       container.destroy(true);
     },
     press(key) {
-      if (state.hasOwnProperty(key)) state[key] = true;
+      if (state.hasOwnProperty(key)) {
+        state[key] = true;
+        pulses[key] = true;
+      }
     },
     release(key) {
       if (state.hasOwnProperty(key)) state[key] = false;
+    },
+    consumePulse(key) {
+      const value = !!pulses[key];
+      pulses[key] = false;
+      return value;
     }
   };
 }
@@ -600,17 +624,22 @@ export function makeVirtualControls(scene, mode = 'explore') {
 export function readControls(scene, controls) {
   const k = scene.keys || {};
   const c = controls ? controls.state : {};
-  return {
-    left: !!(k.left?.isDown || k.A?.isDown || c.left),
-    right: !!(k.right?.isDown || k.D?.isDown || c.right),
+  const p = controls ? controls.pulses : {};
+  const result = {
+    left: !!(k.left?.isDown || k.A?.isDown || c.left || p.left),
+    right: !!(k.right?.isDown || k.D?.isDown || c.right || p.right),
     up: !!(k.up?.isDown || k.W?.isDown),
     down: !!(k.down?.isDown || k.S?.isDown),
-    jump: !!(k.SPACE?.isDown || k.W?.isDown || c.jump),
-    attack: !!(k.X?.isDown || k.J?.isDown || c.attack),
-    guard: !!(k.SHIFT?.isDown || k.C?.isDown || c.guard),
-    interact: !!(k.E?.isDown || k.ENTER?.isDown || c.interact),
-    menu: !!(k.ESC?.isDown || c.menu)
+    jump: !!(k.SPACE?.isDown || k.W?.isDown || c.jump || p.jump),
+    attack: !!(k.X?.isDown || k.J?.isDown || c.attack || p.attack),
+    guard: !!(k.SHIFT?.isDown || k.C?.isDown || c.guard || p.guard),
+    interact: !!(k.E?.isDown || k.ENTER?.isDown || c.interact || p.interact),
+    menu: !!(k.ESC?.isDown || c.menu || p.menu)
   };
+  if (controls && controls.pulses) {
+    for (const key of Object.keys(controls.pulses)) controls.pulses[key] = false;
+  }
+  return result;
 }
 
 export function addGameTopBar(scene, title, subtitle = '') {
@@ -669,47 +698,56 @@ export function addGothicBackdrop(scene, opts = {}) {
   const { W, H } = getLayout(scene);
   const variant = opts.variant || 'hall';
   const depth = opts.depth || -1000;
-  const base = scene.add.rectangle(W / 2, H / 2, W, H, opts.baseColor || 0x07050c, 1).setDepth(depth);
-  const tint1 = variant === 'battle' ? 0x28101f : variant === 'title' ? 0x160d20 : 0x111019;
-  const tint2 = variant === 'battle' ? 0x3a1729 : variant === 'title' ? 0x2a1430 : 0x1b1722;
-  scene.add.rectangle(W / 2, H * 0.28, W, H * 0.58, tint1, 0.72).setDepth(depth + 1);
-  scene.add.rectangle(W / 2, H * 0.76, W, H * 0.42, tint2, 0.9).setDepth(depth + 2);
-  scene.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.24).setDepth(depth + 3);
-  scene.add.rectangle(W / 2, H / 2, W, H, 0x8d4c72, 0.03).setDepth(depth + 4);
+  const base = scene.add.rectangle(W / 2, H / 2, W, H, opts.baseColor || 0x05040a, 1).setDepth(depth);
+
+  const topTint = variant === 'battle' ? 0x20101d : variant === 'title' ? 0x120a17 : 0x0f1018;
+  const midTint = variant === 'battle' ? 0x341328 : variant === 'title' ? 0x25112c : 0x171622;
+  const lowTint = variant === 'battle' ? 0x140910 : variant === 'title' ? 0x1a0c1f : 0x0d0b12;
+  scene.add.rectangle(W / 2, H * 0.17, W, H * 0.34, topTint, 0.82).setDepth(depth + 1);
+  scene.add.rectangle(W / 2, H * 0.54, W, H * 0.50, midTint, 0.74).setDepth(depth + 2);
+  scene.add.rectangle(W / 2, H * 0.86, W, H * 0.30, lowTint, 0.96).setDepth(depth + 3);
+  scene.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.18).setDepth(depth + 4);
 
   const moonX = opts.moonX ?? (variant === 'title' ? W * 0.78 : W * 0.72);
-  const moonY = opts.moonY ?? (variant === 'title' ? H * 0.22 : H * 0.18);
-  scene.add.circle(moonX, moonY, Math.round(shortestSide(W, H) * 0.055), 0xf7d7ff, 0.14).setDepth(depth + 5);
-  scene.add.circle(moonX, moonY, Math.round(shortestSide(W, H) * 0.025), 0xffffff, 0.18).setDepth(depth + 6);
+  const moonY = opts.moonY ?? (variant === 'title' ? H * 0.18 : H * 0.15);
+  scene.add.circle(moonX, moonY, Math.round(shortestSide(W, H) * 0.09), 0x7d5f87, 0.08).setDepth(depth + 5);
+  scene.add.circle(moonX, moonY, Math.round(shortestSide(W, H) * 0.055), 0xf4d9ff, 0.12).setDepth(depth + 6);
+  scene.add.circle(moonX, moonY, Math.round(shortestSide(W, H) * 0.025), 0xffffff, 0.18).setDepth(depth + 7);
 
-  const archColor = variant === 'battle' ? 0x160913 : 0x120815;
-  const archW = Math.min(W * 0.88, 1120);
-  const archH = Math.min(H * 0.9, 640);
-  scene.add.rectangle(W / 2, H * 0.5, archW, archH, archColor, 0.22).setStrokeStyle(2, 0xf0c6ff, 0.06).setDepth(depth + 7);
-  scene.add.rectangle(W * 0.12, H * 0.5, W * 0.22, H, 0x000000, 0.22).setDepth(depth + 8);
-  scene.add.rectangle(W * 0.88, H * 0.5, W * 0.22, H, 0x000000, 0.22).setDepth(depth + 8);
+  const archColor = variant === 'battle' ? 0x120814 : 0x0f0813;
+  const archW = Math.min(W * 0.9, 1160);
+  const archH = Math.min(H * 0.92, 660);
+  scene.add.rectangle(W / 2, H * 0.51, archW, archH, archColor, 0.20).setStrokeStyle(2, 0xf0c6ff, 0.06).setDepth(depth + 8);
+  scene.add.rectangle(W / 2, H * 0.52, archW * 0.72, archH * 0.78, 0x2c1324, 0.08).setDepth(depth + 9);
 
-  const pillarXs = [W * 0.18, W * 0.35, W * 0.65, W * 0.82];
+  const pillarXs = [W * 0.12, W * 0.22, W * 0.78, W * 0.88];
   pillarXs.forEach((x, i) => {
-    scene.add.rectangle(x, H * 0.52, Math.max(18, Math.round(W * 0.015)), H * 0.86, 0x0a060d, 0.55 + i * 0.03).setDepth(depth + 9 + i);
-    scene.add.rectangle(x, H * 0.2, Math.max(44, Math.round(W * 0.035)), 10, 0x2b1624, 0.32).setDepth(depth + 13 + i);
+    scene.add.rectangle(x, H * 0.52, Math.max(24, Math.round(W * 0.02)), H * 0.92, 0x08060b, 0.78 - i * 0.06).setDepth(depth + 10 + i);
+    scene.add.rectangle(x, H * 0.18, Math.max(64, Math.round(W * 0.05)), 12, 0x2a1424, 0.30).setDepth(depth + 14 + i);
   });
 
-  scene.add.ellipse(W * 0.5, H * 0.28, W * 0.34, H * 0.42, 0x7c4a6c, 0.08).setDepth(depth + 20);
-  scene.add.ellipse(W * 0.5, H * 0.42, W * 0.24, H * 0.22, 0xd9a8d7, 0.05).setDepth(depth + 21);
+  const glassXs = [W * 0.30, W * 0.43, W * 0.57, W * 0.70];
+  glassXs.forEach((x, i) => {
+    const glow = [0xf1c6ff, 0xb7e6ff, 0xffbfd9, 0xd7ffa8][i % 4];
+    scene.add.rectangle(x, H * 0.24, W * 0.045, H * 0.24, glow, 0.08).setDepth(depth + 15 + i);
+    scene.add.rectangle(x, H * 0.24, W * 0.020, H * 0.18, 0xffffff, 0.10).setDepth(depth + 20 + i);
+  });
+
+  scene.add.ellipse(W * 0.5, H * 0.34, W * 0.58, H * 0.28, 0x8a4f72, 0.09).setDepth(depth + 24);
+  scene.add.ellipse(W * 0.5, H * 0.40, W * 0.42, H * 0.20, 0xf0c6ff, 0.05).setDepth(depth + 25);
 
   const fogCount = opts.fogCount ?? 5;
   for (let i = 0; i < fogCount; i++) {
     const x = Phaser.Math.Between(Math.round(W * 0.05), Math.round(W * 0.95));
     const y = Phaser.Math.Between(Math.round(H * 0.22), Math.round(H * 0.82));
-    const fog = scene.add.ellipse(x, y, Phaser.Math.Between(180, 340), Phaser.Math.Between(28, 70), 0xc9b0d8, 0.06 + i * 0.006)
+    const fog = scene.add.ellipse(x, y, Phaser.Math.Between(220, 420), Phaser.Math.Between(34, 82), 0xdab7e8, 0.055 + i * 0.007)
       .setDepth(depth + 30 + i);
     scene.tweens.add({
       targets: fog,
       x: fog.x + Phaser.Math.Between(-60, 60),
       y: fog.y + Phaser.Math.Between(-20, 20),
-      alpha: { from: fog.alpha, to: fog.alpha * 0.3 },
-      duration: Phaser.Math.Between(5000, 9000),
+      alpha: { from: fog.alpha, to: fog.alpha * 0.28 },
+      duration: Phaser.Math.Between(6000, 10000),
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
@@ -717,7 +755,7 @@ export function addGothicBackdrop(scene, opts = {}) {
   }
 
   const vignette = scene.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0).setDepth(depth + 99);
-  vignette.setStrokeStyle(48, 0x000000, 0.18);
+  vignette.setStrokeStyle(Math.max(24, Math.round(shortestSide(W, H) * 0.04)), 0x000000, 0.20);
   return { base, vignette };
 }
 
@@ -733,6 +771,7 @@ export function makeModalShell(scene, title, subtitle = '', opts = {}) {
   const depth = opts.depth || 7900;
   const overlay = scene.add.rectangle(W / 2, H / 2, W, H, 0x050308, 0.72).setDepth(depth);
   overlay.setInteractive(new Phaser.Geom.Rectangle(0, 0, W, H), Phaser.Geom.Rectangle.Contains);
+  overlay.on('pointerdown', (pointer) => pointer?.event?.preventDefault?.());
   const panel = scene.add.rectangle(x, y, shellW, shellH, 0x120914, 0.95).setDepth(depth + 1);
   panel.setStrokeStyle(3, 0xf3c6ff, 0.72);
   const inner = scene.add.rectangle(x, y, shellW - 18, shellH - 18, 0x1b1020, 0.92).setDepth(depth + 2);

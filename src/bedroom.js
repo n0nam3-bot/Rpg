@@ -45,10 +45,10 @@ export class BedroomScene extends Phaser.Scene {
 
     addGothicBackdrop(this, { variant: 'title', depth: -3000, fogCount: 5 });
 
-    this.add.image(0, 0, BG_L).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x2e1737).setScrollFactor(0.3);
-    this.add.image(512, 0, BG_C).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x3b1d3f).setScrollFactor(0.35);
-    this.add.image(1024, 0, BG_C).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x3b1d3f).setScrollFactor(0.35);
-    this.add.image(1536, 0, BG_R).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x2f1830).setScrollFactor(0.3);
+    this.add.image(0, 0, BG_L).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x2e1737).setScrollFactor(0.3).setAlpha(0.08);
+    this.add.image(512, 0, BG_C).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x3b1d3f).setScrollFactor(0.35).setAlpha(0.06);
+    this.add.image(1024, 0, BG_C).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x3b1d3f).setScrollFactor(0.35).setAlpha(0.06);
+    this.add.image(1536, 0, BG_R).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x2f1830).setScrollFactor(0.3).setAlpha(0.08);
     this.add.rectangle(worldW / 2, H / 2, worldW, H, 0x120915, 0.42);
 
     this.floorRects = [

@@ -51,10 +51,10 @@ export class CorridorScene extends Phaser.Scene {
     this.add.image(0, 0, BG_L).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x1b2c4e).setScrollFactor(0.18);
     this.add.image(worldW - 512, 0, BG_R).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x1b2c4e).setScrollFactor(0.18);
     for (let i = 0; i < 8; i++) {
-      this.add.image(i * 640 + 240, 84, FENCE_F).setScale(1.7).setAlpha(0.34).setScrollFactor(0.35);
+      this.add.image(i * 640 + 240, 84, FENCE_F).setScale(1.7).setAlpha(0.10).setScrollFactor(0.35);
     }
     for (let i = 0; i < 12; i++) {
-      this.add.image(i * 480 + 120, 170, FENCE_S).setScale(0.8).setAlpha(0.2).setScrollFactor(0.15);
+      this.add.image(i * 480 + 120, 170, FENCE_S).setScale(0.8).setAlpha(0.08).setScrollFactor(0.15);
     }
     this.add.rectangle(worldW / 2, H / 2, worldW, H, 0x080d14, 0.52);
 
