@@ -1,32 +1,25 @@
 import {
-  clamp,
-  normalizeState,
+  createBackdrop,
+  makeStaticRect,
   makeVirtualControls,
   readControls,
   makeMeter,
-  makeStaticRect,
   sceneToNext,
   saveState,
-  keyFor
+  createChoiceDialog,
+  spawnAmbient,
+  spawnFloatingText,
+  modifyCorruption,
+  adjustStats,
+  keyFor,
+  SPRITES,
+  clamp, normalizeState
 } from './util.js';
 
-const BG_L = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/01_dungeon_left.png');
-const BG_C = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/02_dungeon_center.png');
-const BG_R = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/03_dungeon_right.png');
-const FENCE_F = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/fence_front01.png');
-const FENCE_S = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/fence_side01.png');
-const BARREL = keyFor('ruin_runners_shaia/sprites/prop/barrel_001.png');
-const APPLE = keyFor('ruin_runners_shaia/sprites/prop/apple.png');
-const CHEST = keyFor('ruin_runners_shaia/sprites/prop/chest_open01.png');
-const HERO_IDLE = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_00_idle_stand_A01.png');
+const HERO = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_00_idle_stand_A01.png');
 const HERO_WALK = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_11_walk01.png');
 const HERO_RUN = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_12_run01.png');
 const HERO_JUMP = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_21_jump_begin01.png');
-const HERO_LAND = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_22_landing01.png');
-
-function pick(arr, fallback) {
-  return arr.length ? arr : fallback;
-}
 
 export class CorridorScene extends Phaser.Scene {
   constructor() {
@@ -37,189 +30,316 @@ export class CorridorScene extends Phaser.Scene {
     this.state = normalizeState(data.state);
     this.state.sceneKey = 'CorridorScene';
     this.state.room = 'Corridor';
-    this.spawnX = Number(data.spawnX || 180);
+    this.spawnX = Number(data.spawnX || 220);
   }
 
   create() {
     const W = this.scale.width;
     const H = this.scale.height;
     this.worldW = 5600;
-    this.worldH = 720;
     const groundY = 568;
 
-    this.input.addPointer(3);
-    this.physics.world.setBounds(0, 0, this.worldW, this.worldH);
-    this.cameras.main.setBounds(0, 0, this.worldW, this.worldH);
+    createBackdrop(this, {
+      mode: 'corridor',
+      title: 'CORRIDOR',
+      subtitle: 'Move through the route, meet NPCs, and decide what the corruption becomes.'
+    });
+    spawnAmbient(this, { count: 12, mode: 'room' });
 
-    for (let i = 0; i < 10; i++) {
-      this.add.image(512 * i, 0, BG_C).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x10203a + (i % 3) * 0x030301).setScrollFactor(0.25);
-    }
-    this.add.image(0, 0, BG_L).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x1c2d52).setScrollFactor(0.2);
-    this.add.image(this.worldW - 512, 0, BG_R).setOrigin(0, 0).setDisplaySize(512, 384).setTint(0x1c2d52).setScrollFactor(0.2);
-    for (let i = 0; i < 8; i++) {
-      this.add.image(i * 640 + 240, 80, FENCE_F).setScale(1.7).setAlpha(0.5).setScrollFactor(0.35);
-    }
-    for (let i = 0; i < 12; i++) {
-      this.add.image(i * 480 + 120, 170, FENCE_S).setScale(0.8).setAlpha(0.35).setScrollFactor(0.15);
-    }
-    this.add.rectangle(this.worldW / 2, this.worldH / 2, this.worldW, this.worldH, 0x080d14, 0.46);
+    this.input.addPointer(3);
+    this.physics.world.setBounds(0, 0, this.worldW, H);
+    this.cameras.main.setBounds(0, 0, this.worldW, H);
 
     this.groundRects = [
       makeStaticRect(this, this.worldW / 2, groundY + 24, this.worldW, 48),
-      makeStaticRect(this, 820, 478, 220, 18),
-      makeStaticRect(this, 1760, 438, 240, 18),
-      makeStaticRect(this, 3040, 468, 260, 18),
-      makeStaticRect(this, 4300, 418, 280, 18)
+      makeStaticRect(this, 860, 478, 220, 18),
+      makeStaticRect(this, 1720, 438, 250, 18),
+      makeStaticRect(this, 3040, 470, 260, 18),
+      makeStaticRect(this, 4320, 418, 280, 18)
     ];
 
-    this.player = this.physics.add.sprite(this.spawnX, 496, HERO_IDLE).setScale(0.84).setCollideWorldBounds(true);
+    this.player = this.physics.add.sprite(this.spawnX, 496, HERO).setScale(0.84).setCollideWorldBounds(true);
     this.player.body.setSize(70, 88, true);
+    this.player.body.setOffset(18, 14);
     this.groundRects.forEach((r) => this.physics.add.collider(this.player, r));
 
     this.controls = makeVirtualControls(this, 'explore');
     this.keys = this.input.keyboard.addKeys('A,D,W,S,SPACE,SHIFT,E,ESC,ENTER,X');
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
+    this.add.image(680, 536, SPRITES.barrel).setScale(0.88).setAlpha(0.75);
+    this.add.image(1940, 532, SPRITES.barrelAlt).setScale(0.88).setAlpha(0.75);
+    this.add.image(3490, 500, SPRITES.chest).setScale(0.96).setAlpha(0.92);
+    this.add.image(4620, 496, SPRITES.bgLamp).setScale(1.6).setAlpha(0.16);
+
+    this.npcs = [
+      {
+        x: 820,
+        y: 494,
+        label: 'Veiled Acolyte',
+        color: 0xd872b9,
+        prompt: 'A murmuring attendant offering a dangerous blessing.',
+        talk: () => this.talkAcolyte()
+      },
+      {
+        x: 1880,
+        y: 494,
+        label: 'Confessor',
+        color: 0x79b8f7,
+        prompt: 'A quiet voice that can cleanse or harden the heart.',
+        talk: () => this.talkConfessor()
+      }
+    ];
+
+    this.npcs.forEach((npc) => {
+      npc.zone = this.add.rectangle(npc.x, npc.y - 62, 92, 98, 0x261627, 0.38).setStrokeStyle(2, npc.color, 0.34);
+      npc.title = this.add.text(npc.x, npc.y - 104, npc.label, { fontSize: '15px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+      npc.note = this.add.text(npc.x, npc.y + 36, 'Press E', { fontSize: '12px', color: '#dbcce3' }).setOrigin(0.5);
+    });
+
+    this.pickups = [
+      {
+        x: 1360,
+        y: 496,
+        key: SPRITES.orbCure,
+        label: 'Cure Orb',
+        collected: false,
+        collect: () => {
+          adjustStats(this.state, { hp: 10, sta: 8, wil: 10, corruption: -8 });
+          this.state.relics += 1;
+          this.state.choiceLog.push('Collected a cure orb');
+          saveState(this.state);
+          spawnFloatingText(this, 1360, 430, '+CLEANSE', { color: '#bcffd9' });
+        }
+      },
+      {
+        x: 2700,
+        y: 504,
+        key: SPRITES.orbFire,
+        label: 'Fire Orb',
+        collected: false,
+        collect: () => {
+          adjustStats(this.state, { sta: 12, wil: 4, corruption: 6 });
+          this.state.gold += 18;
+          this.state.choiceLog.push('Collected a fire orb');
+          saveState(this.state);
+          spawnFloatingText(this, 2700, 438, '+POWER', { color: '#ffd0e1' });
+        }
+      },
+      {
+        x: 3890,
+        y: 500,
+        key: SPRITES.apple,
+        label: 'Apple',
+        collected: false,
+        collect: () => {
+          this.state.apples += 1;
+          this.state.hp = clamp(this.state.hp + 8, 0, this.state.maxHp);
+          this.state.choiceLog.push('Collected an apple');
+          saveState(this.state);
+          spawnFloatingText(this, 3890, 436, '+ITEM', { color: '#fff1b8' });
+        }
+      }
+    ];
+
+    this.pickups.forEach((p) => {
+      p.sprite = this.add.image(p.x, p.y, p.key).setScale(p.key === SPRITES.apple ? 0.5 : 0.72).setAlpha(0.96);
+      p.glow = this.add.ellipse(p.x, p.y + 10, 64, 30, 0xd268c5, 0.16);
+    });
+
+    this.gate = {
+      x: 3390,
+      y: 494,
+      label: 'Gate',
+      prompt: 'A sealed passage that can become a fight.',
+      trigger: () => this.startBattle()
+    };
+    this.gate.zone = this.add.rectangle(this.gate.x, this.gate.y - 62, 96, 98, 0x3c1526, 0.44).setStrokeStyle(2, 0xffc3e8, 0.32);
+    this.gate.title = this.add.text(this.gate.x, this.gate.y - 104, 'Gate', { fontSize: '15px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+    this.gate.note = this.add.text(this.gate.x, this.gate.y + 36, 'Press E', { fontSize: '12px', color: '#dbcce3' }).setOrigin(0.5);
+
     this.title = this.add.text(24, 18, 'CORRIDOR', { fontSize: '28px', color: '#fff', fontStyle: 'bold' }).setScrollFactor(0).setDepth(5000);
-    this.dayText = this.add.text(24, 50, '', { fontSize: '14px', color: '#d7e8ff' }).setScrollFactor(0).setDepth(5000);
+    this.sub = this.add.text(24, 50, '', { fontSize: '14px', color: '#dfd3e3' }).setScrollFactor(0).setDepth(5000);
     this.promptText = this.add.text(24, H - 40, '', { fontSize: '14px', color: '#fff' }).setScrollFactor(0).setDepth(5000);
 
-    this.hpMeter = makeMeter(this, 24, 88, 250, 'HP', 0xff8ab3);
-    this.staMeter = makeMeter(this, 24, 116, 250, 'STA', 0x89d6ff);
-    this.wilMeter = makeMeter(this, 24, 144, 250, 'WIL', 0xb7f08a);
-    this.prsMeter = makeMeter(this, 24, 172, 250, 'PRESS', 0xffc76d);
+    this.hpMeter = makeMeter(this, 24, 88, 250, 'HP', 0xf27da8);
+    this.staMeter = makeMeter(this, 24, 116, 250, 'STA', 0x7fcdfc);
+    this.wilMeter = makeMeter(this, 24, 144, 250, 'WIL', 0xc5f07b);
+    this.corMeter = makeMeter(this, 24, 172, 250, 'CORR', 0xd871cc);
 
-    this.pickups = [];
-    this.breakables = [];
-    this.patrols = [];
-
-    this._spawnProps();
-    this._spawnPatrols();
-    this._spawnDoors();
-
-    this._refreshHUD();
     this._setAnim(this.player, 'shaia-idle');
-  }
-
-  _spawnDoors() {
-    this.doors = [
-      { x: 160, y: 494, label: 'Bedroom', prompt: 'Return to the bedroom and rest.', action: () => sceneToNext(this, 'BedroomScene', { state: this.state, spawnX: 2060 }) },
-      { x: 1400, y: 478, label: 'Status', prompt: 'Check your route status.', action: () => sceneToNext(this, 'StatusScene', { state: this.state, returnTo: 'CorridorScene' }) },
-      { x: 2900, y: 438, label: 'Battle Gate', prompt: 'Step into the combat screen.', action: () => this._startBattle('gate', 1.15) },
-      { x: 4720, y: 418, label: 'Bedlift', prompt: 'Return to the bedroom route.', action: () => sceneToNext(this, 'BedroomScene', { state: this.state, spawnX: 220 }) }
-    ];
-    this.doorGfx = this.doors.map((d) => {
-      const rect = this.add.rectangle(d.x, d.y - 58, 94, 96, 0x25172c, 0.35).setStrokeStyle(2, 0xffd1f6, 0.3);
-      const text = this.add.text(d.x, d.y - 100, d.label, { fontSize: '15px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-      const note = this.add.text(d.x, d.y + 36, 'Press E', { fontSize: '12px', color: '#eadcf2' }).setOrigin(0.5);
-      return { rect, text, note, ...d };
-    });
-  }
-
-  _spawnPatrols() {
-    const points = [
-      { x: 920, min: 700, max: 1180, speed: 44 },
-      { x: 2140, min: 1840, max: 2460, speed: 54 },
-      { x: 3560, min: 3240, max: 3920, speed: 60 }
-    ];
-    points.forEach((cfg, idx) => {
-      const p = this.physics.add.sprite(cfg.x, 540, keyFor('ruin_runners_shaia/sprites/skeleton/common_01_idle01.png')).setScale(0.78);
-      p.body.setSize(72, 88, true);
-      p.setCollideWorldBounds(true);
-      p.setData('cfg', cfg);
-      p.setData('hp', 30 + this.state.day * 4);
-      p.setData('active', true);
-      this.groundRects.forEach((r) => this.physics.add.collider(p, r));
-      this.patrols.push(p);
-    });
-  }
-
-  _spawnProps() {
-    const apples = [620, 980, 1740, 2780, 3380, 4280, 5040];
-    apples.forEach((x) => {
-      const a = this.physics.add.staticImage(x, 548, APPLE).setScale(0.44);
-      a.setData('type', 'apple');
-      this.pickups.push(a);
-    });
-
-    const barrels = [1120, 1600, 2340, 3120, 3860, 4540];
-    barrels.forEach((x, i) => {
-      const b = this.physics.add.staticImage(x, 548, BARREL).setScale(0.68);
-      b.setData('hp', 3);
-      b.setData('broken', false);
-      this.breakables.push(b);
-    });
-
-    const chest = this.physics.add.staticImage(5350, 548, CHEST).setScale(0.56);
-    chest.setData('type', 'save');
-    this.pickups.push(chest);
-  }
-
-  _refreshHUD(msg = '') {
-    this.dayText.setText(`Day ${this.state.day} • Objective: ${this.state.objective}`);
-    this.hpMeter.set(this.state.hp, this.state.maxHp);
-    this.staMeter.set(this.state.sta, this.state.maxSta);
-    this.wilMeter.set(this.state.wil, this.state.maxWil);
-    this.prsMeter.set(this.state.pressure, 100);
-    this.promptText.setText(msg || this._prompt || 'Walk with A/D or buttons. E opens doors, X breaks barrels or starts battle.');
+    this._refreshHUD('Talk, collect, or fight through the route.');
   }
 
   _setAnim(sprite, anim) {
-    if (!sprite || !sprite.anims) return;
+    if (!sprite?.anims) return;
     if (sprite.anims.currentAnim && sprite.anims.currentAnim.key === anim) return;
     sprite.anims.play(anim, true);
   }
 
-  _nearThing(list, radius = 120) {
-    let best = null;
-    let bestD = 9999;
-    for (const obj of list) {
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, obj.x, obj.y);
-      if (d < bestD) {
-        bestD = d;
-        best = obj;
-      }
-    }
-    return bestD < radius ? best : null;
+  _refreshHUD(msg = '') {
+    this.sub.setText(`Day ${this.state.day} • Corruption ${Math.round(this.state.corruption)} • Gold ${this.state.gold} • Relics ${this.state.relics}`);
+    this.hpMeter.set(this.state.hp, this.state.maxHp);
+    this.staMeter.set(this.state.sta, this.state.maxSta);
+    this.wilMeter.set(this.state.wil, this.state.maxWil);
+    this.corMeter.set(this.state.corruption, this.state.maxCorruption);
+    this.promptText.setText(msg || this._prompt || 'Move with A/D, jump with W/Space, interact with E.');
   }
 
-  _startBattle(kind = 'patrol', scale = 1.0, patrol = null) {
-    const enemy = patrol || this._nearThing(this.patrols, 110);
-    const enemyHp = Math.round((42 + this.state.day * 6) * scale * (1 + (this.state.defeats || 0) * 0.08));
-    const enemyDmg = Math.round((11 + this.state.day * 2.5) * scale * (1 + (this.state.defeats || 0) * 0.05));
-    const enemySpeed = Math.round((72 + this.state.day * 3) * scale);
-    sceneToNext(this, 'BattleScene', {
-      state: this.state,
-      encounter: {
-        kind,
-        hp: enemyHp,
-        dmg: enemyDmg,
-        speed: enemySpeed,
-        label: kind === 'gate' ? 'Gate Skeleton' : 'Patrol Skeleton'
-      },
-      returnX: this.player.x
+  _nearEntity() {
+    const items = [...this.npcs, this.gate, ...this.pickups.filter((p) => !p.collected)];
+    let best = null;
+    let bestDist = 9999;
+    for (const obj of items) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, obj.x, obj.y);
+      if (d < bestDist) {
+        best = obj;
+        bestDist = d;
+      }
+    }
+    return bestDist < 132 ? best : null;
+  }
+
+  talkAcolyte() {
+    this.state.flags.metAcolyte = true;
+    createChoiceDialog(this, {
+      title: 'Veiled Acolyte',
+      body: 'Her whisper offers a blessing that feels half prayer and half hunger. The route bends around the choice.',
+      options: [
+        {
+          label: 'Accept the blessing',
+          fill: 0x4c2243,
+          onSelect: () => {
+            modifyCorruption(this.state, 20);
+            this.state.gold += 30;
+            this.state.sta = clamp(this.state.sta + 10, 0, this.state.maxSta);
+            this.state.flags.acceptedBlessing = true;
+            this.state.choiceLog.push('Accepted the acolyte blessing');
+            saveState(this.state);
+            spawnFloatingText(this, this.player.x, this.player.y - 100, '+CORRUPTION', { color: '#ffd5f0' });
+          }
+        },
+        {
+          label: 'Demand guidance',
+          fill: 0x323658,
+          onSelect: () => {
+            adjustStats(this.state, { wil: 8, sta: 6, corruption: 6, relics: 1 });
+            this.state.choiceLog.push('Demanded guidance from the acolyte');
+            saveState(this.state);
+            spawnFloatingText(this, this.player.x, this.player.y - 100, '+FOCUS', { color: '#cee4ff' });
+          }
+        },
+        {
+          label: 'Refuse',
+          fill: 0x2f1b38,
+          onSelect: () => {
+            modifyCorruption(this.state, -8);
+            this.state.mercy += 1;
+            this.state.choiceLog.push('Refused the acolyte');
+            saveState(this.state);
+            spawnFloatingText(this, this.player.x, this.player.y - 100, 'REJECTED', { color: '#c8ffdf' });
+          }
+        }
+      ]
     });
   }
 
-  _breakNearby() {
-    const near = this._nearThing(this.breakables, 112);
-    if (!near || near.getData('broken')) return false;
-    near.setData('hp', (near.getData('hp') || 3) - 1);
-    near.setTint(0xffc2dc);
-    this.cameras.main.shake(60, 0.004);
-    if (near.getData('hp') <= 0) {
-      near.setData('broken', true);
-      near.destroy();
-      const apple = this.physics.add.staticImage(near.x, near.y - 20, APPLE).setScale(0.5);
-      this.pickups.push(apple);
+  talkConfessor() {
+    this.state.flags.metConfessor = true;
+    createChoiceDialog(this, {
+      title: 'Confessor',
+      body: 'The confessor speaks calmly, as though corruption is a wound and a weapon at once.',
+      options: [
+        {
+          label: 'Confess',
+          fill: 0x294739,
+          onSelect: () => {
+            modifyCorruption(this.state, -18);
+            this.state.wil = clamp(this.state.wil + 12, 0, this.state.maxWil);
+            this.state.mercy += 2;
+            this.state.choiceLog.push('Confessed to the confessor');
+            saveState(this.state);
+            spawnFloatingText(this, this.player.x, this.player.y - 100, '-CORRUPTION', { color: '#d9ffe8' });
+          }
+        },
+        {
+          label: 'Trade silence',
+          fill: 0x3b3144,
+          onSelect: () => {
+            this.state.gold += 20;
+            this.state.corruption = clamp(this.state.corruption + 8, 0, this.state.maxCorruption);
+            this.state.choiceLog.push('Traded silence with the confessor');
+            saveState(this.state);
+            spawnFloatingText(this, this.player.x, this.player.y - 100, '+GOLD', { color: '#ffe6a9' });
+          }
+        },
+        {
+          label: 'Leave',
+          fill: 0x2f1b38,
+          onSelect: () => {
+            this.state.choiceLog.push('Ignored the confessor');
+            saveState(this.state);
+          }
+        }
+      ]
+    });
+  }
+
+  collectPickup(p) {
+    if (p.collected) return;
+    p.collected = true;
+    p.sprite.destroy();
+    p.glow.destroy();
+    p.collect();
+    this._refreshHUD(`${p.label} acquired.`);
+  }
+
+  startBattle() {
+    if (this.state.flags.corridorCleared) {
+      this._refreshHUD('The gate already yields.');
+      return;
     }
-    return true;
+    createChoiceDialog(this, {
+      title: 'Gate Encounter',
+      body: 'A skeleton sentinel crawls out from behind the gate. You can fight it, or back away and keep moving.',
+      options: [
+        {
+          label: 'Fight',
+          fill: 0x6b2945,
+          onSelect: () => {
+            this.state.flags.bossSeen = true;
+            saveState(this.state);
+            sceneToNext(this, 'BattleScene', {
+              state: this.state,
+              encounter: {
+                kind: 'sentinel',
+                label: 'Sentinel Skeleton',
+                hp: 70 + Math.floor(this.state.day * 2),
+                dmg: 10 + Math.floor(this.state.day * 0.7),
+                speed: 60
+              },
+              returnX: this.player.x
+            });
+          }
+        },
+        {
+          label: 'Retreat',
+          fill: 0x2f1b38,
+          onSelect: () => {
+            this.state.corruption = clamp(this.state.corruption + 4, 0, this.state.maxCorruption);
+            this.state.choiceLog.push('Backed away from the gate');
+            saveState(this.state);
+            this._refreshHUD('You retreat and the route trembles.');
+          }
+        }
+      ]
+    });
   }
 
   update() {
     const input = readControls(this, this.controls);
     const onGround = this.player.body.blocked.down || this.player.body.touching.down;
-    const speed = input.guard ? 130 : (input.left && input.right ? 0 : (input.attack ? 190 : (input.jump ? 170 : 220)));
+    const speed = input.guard ? 130 : (this.keys.SHIFT.isDown ? 260 : 180);
 
     let vx = 0;
     if (input.left) vx -= speed;
@@ -227,92 +347,29 @@ export class CorridorScene extends Phaser.Scene {
     this.player.setVelocityX(vx);
 
     if (input.jump && onGround) {
-      this.player.setVelocityY(-470);
+      this.player.setVelocityY(-465);
       this._setAnim(this.player, 'shaia-jump');
+      if (this.state.settings.shake) this.cameras.main.shake(30, 0.0014);
     }
 
     if (vx !== 0) this.player.setFlipX(vx < 0);
     if (!onGround) this._setAnim(this.player, 'shaia-jump');
-    else if (Math.abs(vx) > 180) this._setAnim(this.player, input.guard ? 'shaia-guard' : 'shaia-run');
+    else if (Math.abs(vx) > 180) this._setAnim(this.player, 'shaia-run');
     else if (Math.abs(vx) > 0) this._setAnim(this.player, 'shaia-walk');
-    else this._setAnim(this.player, input.guard ? 'shaia-guard' : 'shaia-idle');
+    else this._setAnim(this.player, 'shaia-idle');
 
-    this.pickups = this.pickups.filter((p) => p.active !== false);
-    this.breakables = this.breakables.filter((b) => b.active !== false);
-    this.patrols = this.patrols.filter((p) => p.active !== false);
-
-    let prompt = 'Corridor: move, break crates, collect apples, or enter a door.';
-    const door = this.doors.reduce((best, d) => {
-      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, d.x, d.y);
-      if (!best || dist < best.dist) return { d, dist };
-      return best;
-    }, null);
-
-    if (door && door.dist < 130) prompt = `${door.d.label}: ${door.d.prompt}`;
-    const pickup = this.pickups.find((p) => Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 95);
-    if (pickup) {
-      if (pickup.getData('type') === 'save') {
-        prompt = 'Save chest: press E to save.';
-      } else {
-        prompt = 'Apple: walk through to collect.';
-      }
-    }
-    const patrol = this.patrols.find((p) => Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 130);
-    if (patrol) prompt = 'Patrol nearby: press E to start combat.';
-    if (this.state.pressure >= 55) prompt = 'Pressure is high. Combat patrols feel more aggressive.';
-    this._prompt = prompt;
+    const near = this._nearEntity();
+    this._prompt = near ? (near.prompt || `${near.label}`) : 'Explore the corridor, meet NPCs, and decide what the route should become.';
     this._refreshHUD();
 
     if (input.interact && !this._lastInteract) {
-      if (door && door.dist < 130) {
-        door.d.action();
-        this._lastInteract = input.interact;
-        return;
-      }
-      if (pickup && pickup.getData('type') === 'save') {
-        saveState(this.state);
-        this._prompt = 'Saved.';
-        this._refreshHUD('Saved.');
-        this._lastInteract = input.interact;
-        return;
-      }
-      if (patrol) {
-        this._startBattle('patrol', this.state.pressure > 60 ? 1.25 : 1.0, patrol);
-        this._lastInteract = input.interact;
-        return;
+      if (near) {
+        if (near.talk) near.talk();
+        else if (near.trigger) near.trigger();
+        else if (near.collect) this.collectPickup(near);
       }
     }
     this._lastInteract = input.interact;
-
-    if (input.attack && !this._lastAttack && this._breakNearby()) {
-      this.state.pressure = clamp(this.state.pressure - 1, 0, 100);
-      saveState(this.state);
-    }
-
-    this.pickups.forEach((p) => {
-      if (!p.active) return;
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y);
-      if (d < 54) {
-        if (p.getData('type') === 'apple') {
-          this.state.hp = clamp(this.state.hp + 12, 0, this.state.maxHp);
-          this.state.sta = clamp(this.state.sta + 14, 0, this.state.maxSta);
-          this.state.pressure = clamp(this.state.pressure - 3, 0, 100);
-          p.destroy();
-          saveState(this.state);
-        }
-      }
-    });
-
-    this.patrols.forEach((p) => {
-      if (!p.active) return;
-      const cfg = p.getData('cfg');
-      if (!cfg) return;
-      p.setVelocityX(cfg.speed * (p.flipX ? -1 : 1));
-      if (p.x < cfg.min) p.setFlipX(false);
-      if (p.x > cfg.max) p.setFlipX(true);
-      if (this.state.pressure > 50) p.setVelocityX((cfg.speed + 20) * (p.flipX ? -1 : 1));
-      this._setAnim(p, Math.abs(p.body.velocity.x) > 4 ? 'skeleton-walk' : 'skeleton-idle');
-    });
 
     if (input.menu && !this._lastMenu) {
       sceneToNext(this, 'SettingsScene', { state: this.state, returnTo: 'CorridorScene' });
@@ -320,6 +377,12 @@ export class CorridorScene extends Phaser.Scene {
       return;
     }
     this._lastMenu = input.menu;
-    this._lastAttack = input.attack;
+
+    // Auto-collect pickups on touch if very close to them.
+    for (const p of this.pickups) {
+      if (!p.collected && Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 42 && input.interact) {
+        this.collectPickup(p);
+      }
+    }
   }
 }

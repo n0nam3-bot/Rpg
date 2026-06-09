@@ -9,7 +9,7 @@ import { SettingsScene } from './settings.js';
 const config = {
   type: Phaser.AUTO,
   parent: 'game',
-  backgroundColor: '#0b0910',
+  backgroundColor: '#060309',
   pixelArt: true,
   roundPixels: true,
   physics: {
@@ -38,8 +38,8 @@ const config = {
 
 if (typeof window !== 'undefined' && window.addEventListener) {
   window.addEventListener('load', () => {
-    window.__shaiaRouteGame = new Phaser.Game(config);
+    window.__unholyMaidenGame = new Phaser.Game(config);
   });
 } else {
-  globalThis.__shaiaRouteGame = new Phaser.Game(config);
+  globalThis.__unholyMaidenGame = new Phaser.Game(config);
 }
