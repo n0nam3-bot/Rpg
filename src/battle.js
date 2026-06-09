@@ -8,766 +8,968 @@ import {
 import { SKILLS, ITEMS } from './data.js';
 
 const HERO_IDLE  = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_00_idle_stand_A01.png');
+const HERO_WALK  = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_11_walk01.png');
 const HERO_ATK1  = keyFor('ruin_runners_shaia/sprites/shaia/sprites_attack/attack_01_cobination0101.png');
 const HERO_HURT  = keyFor('ruin_runners_shaia/sprites/shaia/sprites_damage/damage_01_damage_head.png');
 const HERO_GUARD = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_31_guard_stand01.png');
-const SK_IDLE    = keyFor('ruin_runners_shaia/sprites/skeleton/common_01_idle01.png');
-const BG_C       = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/02_dungeon_center.png');
 
-// ─── INTENT DEFINITIONS ───────────────────────────────────────────────────────
+const BG_C = keyFor('ruin_runners_shaia/sprites/background/sprites_dungeon/02_dungeon_center.png');
+
 const INTENT_INFO = {
-  strike:     { label: 'STRIKE',     color: '#ff8888', desc: 'Physical attack' },
-  heavyStrike:{ label: 'HEAVY',      color: '#ff4444', desc: 'Powerful blow' },
-  guard:      { label: 'GUARD',      color: '#88ccff', desc: 'Defending itself' },
-  feint:      { label: 'FEINT',      color: '#ffcc44', desc: 'Tricky maneuver' },
-  arouse:     { label: 'AROUSE',     color: '#ff44cc', desc: 'Targets willpower' },
-  heavyStrip: { label: 'STRIP!',     color: '#ff0088', desc: 'Targets clothing' },
-  bind:       { label: 'BIND',       color: '#cc44ff', desc: 'H-Bind attempt' },
-  voidPulse:  { label: 'VOID PULSE', color: '#8800ff', desc: 'Dark energy burst' },
+  strike:      { label: 'STRIKE',      color: '#ff8c8c', desc: 'Physical hit' },
+  heavyStrike: { label: 'HEAVY',       color: '#ff5555', desc: 'Heavy blow' },
+  guard:       { label: 'GUARD',       color: '#88ccff', desc: 'Defensive stance' },
+  feint:       { label: 'FEINT',       color: '#ffd166', desc: 'Sets up a harder hit' },
+  arouse:      { label: 'AROUSE',      color: '#ff66cc', desc: 'Raises pressure' },
+  heavyStrip:  { label: 'STRIP',       color: '#ff3399', desc: 'Damages clothing' },
+  bind:        { label: 'BIND',        color: '#cc66ff', desc: 'Locks movement' },
+  voidPulse:   { label: 'VOID PULSE',  color: '#aa66ff', desc: 'Corrupting burst' },
+  stunned:     { label: 'STUNNED',      color: '#dddddd', desc: 'Cannot act' },
 };
 
+const ACTIONS = [
+  { key: 'attack', label: 'Attack',   hotkey: '1' },
+  { key: 'heavy',  label: 'Heavy',    hotkey: '2' },
+  { key: 'guard',  label: 'Guard',    hotkey: '3' },
+  { key: 'skill',  label: 'Skill',    hotkey: '4' },
+  { key: 'item',   label: 'Item',     hotkey: '5' },
+  { key: 'flee',   label: 'Flee',     hotkey: '6' },
+];
+
+const SKILL_ORDER = ['darkVeil', 'soulDrain', 'voidBurst'];
+const ITEM_ORDER = ['healingPotion', 'flashFlask'];
+
 export class BattleScene extends Phaser.Scene {
-  constructor() { super({ key: 'BattleScene' }); }
+  constructor() {
+    super({ key: 'BattleScene' });
+  }
 
   init(data = {}) {
-    this.state      = normalizeState(data.state);
-    this.encounter  = data.encounter;
-    this._returnTo  = data.returnTo || 'WorldScene';
-    this._ended     = false;
-    this._busy      = false;
-    this._turn      = 'player';
-
-    // Battle-local enemy object
-    this.enemy = {
-      hp:          this.encounter.hp,
-      maxHp:       this.encounter.hp,
-      pressure:    100,
-      focus:       40,
-      intent:      'strike',
-      stunned:     0,
-      weakened:    0,
-    };
-
-    // Battle-local player buffs
-    this.playerBuff = {
-      guard:       false,
-      veilActive:  false,
-      focusBonus:  0,
-      bindTurns:   0,   // H-Bind duration (can't attack normally)
-    };
-
+    this.state = normalizeState(data.state);
+    this.encounter = data.encounter || data.enc || null;
+    this._returnTo = data.returnTo || 'WorldScene';
+    this._ended = false;
+    this._busy = false;
+    this._turn = 'player';
+    this._menuMode = 'main';
+    this._choiceButtons = [];
+    this._actionButtons = [];
     this._log = [];
+
+    this.playerGuardTurns = 0;
+    this.playerVeilTurns = 0;
+    this.playerBoundTurns = 0;
+    this.playerFocused = false;
+
+    this.enemyGuardTurns = 0;
+    this.enemyStunnedTurns = 0;
+    this.enemyWeakTurns = 0;
+    this.intentIndex = 0;
   }
 
   create() {
     const W = this.scale.width;
     const H = this.scale.height;
+    const encounter = this._resolveEncounter();
 
-    // ── BACKGROUND ─────────────────────────────────────────────────────────
+    this.physics.world.setBounds(0, 0, W, H);
+
+    this._drawBackground(W, H);
+
+    this.enemy = {
+      hp: encounter.hp,
+      maxHp: encounter.maxHp || encounter.hp,
+      atk: encounter.atk || 10,
+      def: encounter.def || 0,
+      intents: Array.isArray(encounter.intents) && encounter.intents.length ? encounter.intents.slice() : ['strike'],
+      pressure: 100,
+      isBoss: !!encounter.isBoss,
+      label: encounter.label,
+    };
+
+    this._stageFloorY = 468;
+    this._playerHomeX = 286;
+    this._enemyHomeX = 994;
+    this._playerTargetX = this._playerHomeX;
+    this._enemyTargetX = this._enemyHomeX;
+
+    this._buildHeader(W);
+    this._buildActors();
+    this._buildPanels(W, H);
+    this._buildMeters(W);
+    this._buildActionPanel(W, H);
+
+    this._turnBanner.setText('YOUR TURN');
+    this._setIntent(this.enemy.intents[0], true);
+
+    this._logPush(`${encounter.label} blocks the path.`);
+    this._logPush(encounter.lore || 'A dark presence closes in.');
+
+    this.input.keyboard.on('keydown-ONE', () => this._mainAction(0));
+    this.input.keyboard.on('keydown-TWO', () => this._mainAction(1));
+    this.input.keyboard.on('keydown-THREE', () => this._mainAction(2));
+    this.input.keyboard.on('keydown-FOUR', () => this._mainAction(3));
+    this.input.keyboard.on('keydown-FIVE', () => this._mainAction(4));
+    this.input.keyboard.on('keydown-SIX', () => this._mainAction(5));
+    this.input.keyboard.on('keydown-ESC', () => {
+      if (this._menuMode !== 'main') {
+        this._closeSubMenu();
+        return;
+      }
+      // simple pause overlay / flee fallback for desktop
+      this._tryFlee();
+    });
+
+    this._rebuildMainActions();
+    this._refreshMeters();
+    this.cameras.main.fadeIn(240, 6, 3, 10);
+    saveState(this.state);
+  }
+
+  _resolveEncounter() {
+    if (this.encounter) return this.encounter;
+    return {
+      id: 'possessedGuard',
+      label: 'Possessed Guard',
+      spriteKey: 'enemy-guard',
+      hp: 60,
+      maxHp: 60,
+      atk: 12,
+      def: 4,
+      corruptionOnDefeat: 4,
+      stripsOnDefeat: true,
+      reward: { gold: 18, hp: 8, sta: 12, pressureDrop: 10 },
+      intents: ['strike','strike','guard','heavyStrike','strike'],
+      stripChance: 0.22,
+      arousalAttack: false,
+      bindAttack: false,
+      lore: 'Once a faithful sentinel, now driven mad by dark influence.',
+    };
+  }
+
+  _drawBackground(W, H) {
     if (this.textures.exists(BG_C)) {
-      this.add.image(W / 2, H / 2, BG_C).setDisplaySize(W, H).setTint(0x0e0518);
+      this.add.image(W / 2, H / 2, BG_C).setDisplaySize(W, H).setTint(0x110814);
     } else {
-      this.add.rectangle(W / 2, H / 2, W, H, 0x0a0316);
+      this.add.rectangle(W / 2, H / 2, W, H, 0x07040d);
+    }
+    this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.32);
+    this.add.rectangle(W / 2, 34, W, 68, 0x09050f, 0.92).setStrokeStyle(1, 0x7b2ca3, 0.45);
+    this.add.rectangle(W / 2, 506, W, 214, 0x08040d, 0.95).setStrokeStyle(1, 0x7733cc, 0.28);
+
+    const arena = this.add.graphics();
+    arena.lineStyle(4, 0xc79cff, 0.18);
+    arena.lineBetween(80, this._stageFloorY, W - 80, this._stageFloorY);
+    arena.lineStyle(1, 0xffffff, 0.08);
+    arena.lineBetween(90, this._stageFloorY + 1, W - 90, this._stageFloorY + 1);
+
+    for (let i = 0; i < 7; i++) {
+      const x = 120 + i * 170;
+      const pillar = this.add.graphics();
+      pillar.fillStyle(0x14091f, 1);
+      pillar.fillRect(x, 120, 18, 250);
+      pillar.lineStyle(2, 0xc88cff, 0.18);
+      pillar.strokeRect(x, 120, 18, 250);
     }
 
-    // Corruption atmosphere overlay
-    const tier = corruptionTier(this.state.corruption);
-    this.add.rectangle(W / 2, H / 2, W, H, tier.color, 0.06);
-    this.add.rectangle(W / 2, H / 2, W, H, 0x06020c, 0.45);
+    this._turnBanner = this.add.text(W / 2, 18, 'YOUR TURN', {
+      fontSize: '22px',
+      color: '#ffe3ff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(5001);
 
-    // Battle arena frame
-    this.add.rectangle(W / 2, 520, W, 260, 0x08030e, 0.88);
-    this.add.rectangle(W / 2, 388, W, 4,   0xcc44ff, 0.3);
+    this._subBanner = this.add.text(W / 2, 45, `Day ${this.state.day}  •  ${this.state.objective}`, {
+      fontSize: '13px',
+      color: '#b992c9',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(5001);
+  }
 
-    // ── TITLE BAR ──────────────────────────────────────────────────────────
-    this.add.rectangle(W / 2, 28, W, 56, 0x06020e, 0.92);
-    this._turnBanner = this.add.text(W / 2, 15, 'YOUR TURN', {
-      fontSize: '22px', color: '#ffd0ff', fontStyle: 'bold',
-    }).setOrigin(0.5);
-    this._subBanner = this.add.text(W / 2, 40, `${this.encounter.label}  •  Day ${this.state.day}`, {
-      fontSize: '13px', color: '#aa88bb',
-    }).setOrigin(0.5);
+  _buildHeader(W) {
+    this._playerName = this.add.text(36, 98, 'VEILED', { fontSize: '18px', color: '#ffffff', fontStyle: 'bold' }).setDepth(5002);
+    this._enemyName = this.add.text(W - 290, 98, this._resolveEncounter().label.toUpperCase(), { fontSize: '18px', color: '#ffffff', fontStyle: 'bold' }).setDepth(5002);
+    this._playerPortrait = this.add.rectangle(84, 152, 96, 108, 0x24112d, 0.96).setStrokeStyle(2, 0xc88cff, 0.5);
+    this._enemyPortrait = this.add.rectangle(W - 84, 152, 96, 108, 0x24112d, 0.96).setStrokeStyle(2, 0xc88cff, 0.5);
+    this._intentCard = makePanel(this, W - 184, 234, 292, 162, { fill: 0x0d0714, alpha: 0.94, stroke: 0x9f4cff, depth: 5000 });
+    this._intentTitle = this.add.text(W - 184, 160, 'ENEMY INTENT', { fontSize: '13px', color: '#d4b4ff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(5001);
+    this._intentText = this.add.text(W - 184, 226, '???', { fontSize: '26px', color: '#ff88cc', fontStyle: 'bold' }).setOrigin(0.5).setDepth(5001);
+    this._intentDesc = this.add.text(W - 184, 274, '', { fontSize: '13px', color: '#cbb9df', align: 'center', wordWrap: { width: 250 } }).setOrigin(0.5).setDepth(5001);
+  }
 
-    // ── SPRITES ────────────────────────────────────────────────────────────
-    const heroKey = this.textures.exists(HERO_IDLE) ? HERO_IDLE : null;
-    if (heroKey) {
-      this._heroSprite = this.add.sprite(280, 430, HERO_IDLE).setScale(0.88).setOrigin(0.5, 0.96);
-      this._heroSprite.play('hero-idle');
-    } else {
-      this._heroSprite = this._makeProceduralHero(280, 430);
+  _buildActors() {
+    const enemyKey = this._resolveEncounter().spriteKey || 'enemy-guard';
+    this.hero = this._makeHero(this._playerHomeX, this._stageFloorY);
+    this.enemySprite = this._makeEnemy(this._enemyHomeX, this._stageFloorY, enemyKey);
+    this.hero.setScale(0.92);
+    this.enemySprite.setScale(0.96);
+
+    this.hero.setFlipX(false);
+    this.enemySprite.setFlipX(true);
+  }
+
+  _makeHero(x, y) {
+    const sprite = this.add.sprite(x, y, HERO_IDLE).setOrigin(0.5, 1);
+    if (this.anims.exists('hero-idle')) {
+      sprite.play('hero-idle');
     }
+    return sprite;
+  }
 
-    const enemyKey = this.textures.exists(this.encounter.spriteKey) ? this.encounter.spriteKey : null;
-    this._enemySprite = this.add.image(1000, 420, enemyKey || 'enemy-guard').setScale(0.92).setOrigin(0.5, 0.96);
-    this._enemySprite.setFlipX(true);
-
-    // Corruption tint on enemy
-    if (this.encounter.id === 'cultistSeducer') this._enemySprite.setTint(0xff88cc);
-    if (this.encounter.id === 'shadowBeast')    this._enemySprite.setTint(0x8844ff);
-    if (this.encounter.id === 'patronBoss')     this._enemySprite.setTint(0xffaaff);
-
-    // ── STATUS BARS ────────────────────────────────────────────────────────
-    this._buildStatusBars(W);
-
-    // ── LOG PANEL ──────────────────────────────────────────────────────────
-    this.add.rectangle(W / 2, 615, W - 40, 96, 0x06020e, 0.92).setStrokeStyle(1, 0x7700cc, 0.4);
-    this._logText = this.add.text(30, 572, '', {
-      fontSize: '14px', color: '#ddd0ee', wordWrap: { width: W - 70 }, lineSpacing: 2,
-    });
-
-    // ── CLOTHING STATUS (right side of log) ────────────────────────────────
-    this._buildClothingPanel(W, H);
-
-    // ── ACTION BUTTONS ─────────────────────────────────────────────────────
-    this._buildActionButtons(W, H);
-
-    // ── INTENT DISPLAY ─────────────────────────────────────────────────────
-    this._intentText = this.add.text(870, 200, 'INTENT: ???', {
-      fontSize: '14px', color: '#ff88cc', fontStyle: 'bold',
-      backgroundColor: '#0a020e99', padding: { x: 6, y: 3 },
-    }).setOrigin(0.5);
-
-    // ── KEYBOARD SHORTCUTS ─────────────────────────────────────────────────
-    const keys = this.input.keyboard.addKeys('ONE,TWO,THREE,FOUR,FIVE,SIX,ESC');
-    keys.ONE.on('down', () => this._chooseAction(0));
-    keys.TWO.on('down', () => this._chooseAction(1));
-    keys.THREE.on('down', () => this._chooseAction(2));
-    keys.FOUR.on('down', () => this._chooseAction(3));
-    keys.FIVE.on('down', () => this._chooseAction(4));
-    keys.SIX.on('down',  () => this._chooseAction(5));
-
-    // ── BOSS INTRO ─────────────────────────────────────────────────────────
-    if (this.encounter.isBoss) {
-      this._showBossIntro();
-    } else {
-      this._logPush(`A ${this.encounter.label} bars your path.`);
-      this._logPush(this.encounter.lore);
-      this.time.delayedCall(60, () => this._resolveEnemyIntent());
+  _makeEnemy(x, y, key) {
+    const sprite = this.add.sprite(x, y, key).setOrigin(0.5, 1);
+    if (key === 'sk-idle' && this.anims.exists('sk-idle')) {
+      sprite.play('sk-idle');
+    } else if (key === 'enemy-patron') {
+      sprite.setScale(1.08);
     }
-
-    this._refreshAll();
-    this.cameras.main.fadeIn(400, 4, 2, 10);
+    return sprite;
   }
 
-  // ─── STATUS BARS ───────────────────────────────────────────────────────────
-  _buildStatusBars(W) {
-    // Player side
-    this.add.text(60, 192, 'VERITY', { fontSize: '18px', color: '#fff', fontStyle: 'bold' });
-    this._pHp   = makeMeter(this, 60, 218, 280, 'HP',   0xff6688);
-    this._pSta  = makeMeter(this, 60, 242, 280, 'STA',  0x44aaff);
-    this._pWil  = makeMeter(this, 60, 266, 280, 'WIL',  0xaaffaa);
-    this._pCorr = makeMeter(this, 60, 290, 280, 'CORR', 0xcc00ff);
-    this._pArou = makeMeter(this, 60, 314, 280, 'AROU', 0xff44bb);
+  _buildMeters(W) {
+    this._pHp = makeMeter(this, 230, 106, 290, 'HP', 0xff6688);
+    this._pSta = makeMeter(this, 230, 130, 290, 'STA', 0x44aaff);
+    this._pWil = makeMeter(this, 230, 154, 290, 'WIL', 0xaaffaa);
+    this._pCorr = makeMeter(this, 230, 178, 290, 'CORR', 0xcc00ff);
+    this._pAr  = makeMeter(this, 230, 202, 290, 'AROU', 0xff44bb);
 
-    // Enemy side
-    this.add.text(780, 192, this.encounter.label.toUpperCase(), { fontSize: '16px', color: '#fff', fontStyle: 'bold' });
-    this._eHp   = makeMeter(this, 780, 218, 280, 'HP',   0xff4444);
-    this._ePres = makeMeter(this, 780, 242, 280, 'PRSS', 0xffaa44);
+    this._eHp = makeMeter(this, W - 520, 106, 290, 'HP', 0xff5555);
+    this._ePres = makeMeter(this, W - 520, 130, 290, 'PRES', 0xffaa44);
+    this._eDef = makeMeter(this, W - 520, 154, 290, 'GUARD', 0x88ccff);
+
+    this._hpNum = this.add.text(540, 106, '', { fontSize: '12px', color: '#e4d7ef' }).setDepth(5002);
+    this._enemyStatus = this.add.text(W - 520, 178, '', { fontSize: '12px', color: '#e4d7ef' }).setDepth(5002);
   }
 
-  // ─── CLOTHING PANEL ────────────────────────────────────────────────────────
-  _buildClothingPanel(W, H) {
-    const cx = W - 190;
-    const cy = 570;
-    this.add.text(cx, cy - 48, 'CLOTHING', { fontSize: '12px', color: '#aa88bb', fontStyle: 'bold' }).setOrigin(0.5);
-    this._clothingTexts = {};
-    const slots = ['outer','upper','lower','inner','shoes'];
-    const slotLabels = { outer:'CLOAK', upper:'VEST', lower:'SKIRT', inner:'INNER', shoes:'SHOES' };
-    slots.forEach((slot, i) => {
-      const c = this.state.clothing[slot];
-      const col = c.stripped ? '#ff3333' : (c.dur < 40 ? '#ffaa33' : '#88ff88');
-      const t = this.add.text(cx, cy - 30 + i * 18, `${slotLabels[slot]}: ${c.stripped ? 'STRIPPED' : Math.round(c.dur) + '%'}`, {
-        fontSize: '11px', color: col,
-      }).setOrigin(0.5);
-      this._clothingTexts[slot] = t;
-    });
+  _buildPanels(W, H) {
+    this._logPanel = makePanel(this, W / 2, 566, W - 44, 108, { fill: 0x08040f, alpha: 0.95, stroke: 0x8f4df0, depth: 4995 });
+    this._logText = this.add.text(38, 516, '', {
+      fontSize: '14px',
+      color: '#e5d4ff',
+      wordWrap: { width: W - 60 },
+      lineSpacing: 4,
+    }).setDepth(5001);
+
+    this._actionPanel = makePanel(this, W / 2, 666, W - 40, 118, { fill: 0x0c0711, alpha: 0.96, stroke: 0x6d3f9c, depth: 4994 });
+    this._hintText = this.add.text(38, 604, '1–6 or tap a button.  ESC backs out of submenus or tries to flee.', {
+      fontSize: '12px',
+      color: '#9988bb',
+    }).setDepth(5002);
+
+    this._turnInfo = this.add.text(W / 2, 604, '', {
+      fontSize: '13px',
+      color: '#ffd0ff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(5002);
   }
 
-  _refreshClothingPanel() {
-    const slots = ['outer','upper','lower','inner','shoes'];
-    const slotLabels = { outer:'CLOAK', upper:'VEST', lower:'SKIRT', inner:'INNER', shoes:'SHOES' };
-    slots.forEach(slot => {
-      const c = this.state.clothing[slot];
-      const col = c.stripped ? '#ff3333' : (c.dur < 40 ? '#ffaa33' : '#88ff88');
-      const t = this._clothingTexts[slot];
-      if (t) {
-        t.setText(`${slotLabels[slot]}: ${c.stripped ? 'STRIPPED' : Math.round(c.dur) + '%'}`);
-        t.setColor(col);
-      }
-    });
-  }
+  _buildActionPanel(W, H) {
+    this._clearButtons();
+    this._actionButtons = [];
 
-  // ─── ACTION BUTTONS ────────────────────────────────────────────────────────
-  _buildActionButtons(W, H) {
-    const actions = this._getActions();
-    this._actionBtns = [];
-    const btnW = 172, btnH = 50;
-    const startX = 86;
-    const y = H - 50;
-    const gap = 184;
-
-    actions.forEach((act, i) => {
-      const x = startX + i * gap;
-      const available = !act.disabled;
-      const fill   = available ? (act.corruption ? 0x330044 : 0x1c1030) : 0x0e0814;
-      const stroke  = available ? (act.corruption ? 0xcc00ff : 0xaa66cc) : 0x443355;
-      const btn = createButton(this, x, y, btnW, btnH, `${i + 1}. ${act.label}`, () => {
-        if (!act.disabled) this._chooseAction(i);
-      }, { fill, stroke, fontSize: '14px', hoverFill: 0x4a2068 });
-      if (!available) btn.t.setAlpha(0.45);
-      if (act.corruption) btn.t.setColor('#ff44ff');
-      this._actionBtns.push({ btn, act });
-    });
-
-    // Hint bar
-    this.add.text(W / 2, H - 22, '1–6 Keys / Click to act', {
-      fontSize: '12px', color: '#554466',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(6000);
-  }
-
-  _getActions() {
-    const s = this.state;
-    const bound = this.playerBuff.bindTurns > 0;
-    const hb    = isHBound(s);
-
-    // Build available skills
-    const availableSkills = SKILLS.filter(sk => s.corruption >= sk.minCorruption && s.sta >= sk.staCost);
-    const skill = availableSkills[0] || SKILLS.find(sk => s.corruption >= sk.minCorruption);
-
-    const acts = [
-      { label: 'Attack',     disabled: bound || hb,        corruption: false },
-      { label: 'Heavy',      disabled: bound || hb || s.sta < 14, corruption: false },
-      { label: 'Guard',      disabled: bound,               corruption: false },
-      { label: 'Focus',      disabled: false,               corruption: false },
-      { label: skill ? skill.label : 'Skill',
-        disabled: !skill || s.corruption < (skill?.minCorruption||99) || s.sta < (skill?.staCost||99),
-        corruption: !!skill  },
-      { label: 'Item',       disabled: Object.values(s.items).every(v => v <= 0), corruption: false },
-      { label: 'Flee',       disabled: false,               corruption: false },
+    const centers = [
+      W * 0.20,
+      W * 0.50,
+      W * 0.80,
     ];
+    const rows = [640, 692];
 
-    // If H-Bound: limited options
-    if (hb) {
-      acts[0].label    = 'Struggle';
-      acts[0].disabled = false;
-      acts[1].disabled = true;
-    }
+    this._actionSlots = {};
+    const defs = this._mainActions();
 
-    // If Flash Flask available, show it prominently when bound
-    if (bound && s.items.flashFlask > 0) {
-      acts[5].label    = 'Flash Flask!';
-      acts[5].disabled = false;
-    }
-
-    return acts.slice(0, 6);
+    defs.forEach((def, index) => {
+      const col = index % 3;
+      const row = Math.floor(index / 3);
+      const x = centers[col];
+      const y = rows[row];
+      const btn = createButton(this, x, y, 226, 46, `${def.hotkey}. ${def.label}`, () => {
+        if (!def.disabled) this._mainAction(index);
+      }, {
+        fill: def.disabled ? 0x1a1022 : (def.corruption ? 0x32103d : 0x211026),
+        stroke: def.disabled ? 0x4b3c5c : (def.corruption ? 0xff66ff : 0xcc88ff),
+        textColor: def.disabled ? '#6f6480' : '#ffffff',
+        fontSize: '15px',
+        depth: 5010,
+        hoverFill: 0x4a2162,
+      });
+      if (def.disabled) btn.t.setAlpha(0.45);
+      this._actionButtons.push(btn);
+    });
   }
 
-  _rebuildButtons() {
-    this._actionBtns.forEach(b => b.btn.g.destroy());
-    this._actionBtns = [];
+  _mainActions() {
+    const s = this.state;
+    const hBound = isHBound(s) || this.playerBoundTurns > 0;
+    const skill = this._bestSkill();
+    const itemQty = this._usableItemCount();
+    return [
+      { label: hBound ? 'Struggle' : 'Attack', hotkey: '1', disabled: false, corruption: false },
+      { label: 'Heavy', hotkey: '2', disabled: hBound || s.sta < 10, corruption: false },
+      { label: 'Guard', hotkey: '3', disabled: hBound, corruption: false },
+      { label: skill ? 'Skill' : 'Skill --', hotkey: '4', disabled: hBound || !skill, corruption: !!skill },
+      { label: itemQty > 0 ? 'Item' : 'Item --', hotkey: '5', disabled: itemQty <= 0, corruption: false },
+      { label: 'Flee', hotkey: '6', disabled: false, corruption: false },
+    ];
+  }
+
+  _bestSkill() {
+    return SKILL_ORDER.map(id => SKILLS.find(sk => sk.id === id))
+      .find(sk => sk && this.state.corruption >= sk.minCorruption && this.state.sta >= sk.staCost) || null;
+  }
+
+  _usableItemCount() {
+    return ITEM_ORDER.reduce((sum, key) => {
+      const item = ITEMS[key];
+      const qty = this.state.items[key] || 0;
+      return sum + (item && item.usableInBattle ? qty : 0);
+    }, 0);
+  }
+
+  _clearButtons() {
+    if (!this._actionButtons) return;
+    this._actionButtons.forEach(btn => {
+      if (btn?.g?.destroy) btn.g.destroy(true);
+    });
+    this._actionButtons = [];
+    if (this._choiceButtons && this._choiceButtons.length) {
+      this._choiceButtons.forEach(btn => {
+        if (btn?.g?.destroy) btn.g.destroy(true);
+      });
+    }
+    this._choiceButtons = [];
+  }
+
+  _rebuildMainActions() {
+    this._menuMode = 'main';
+    this._clearSubmenu();
+    this._buildActionPanel(this.scale.width, this.scale.height);
+  }
+
+  _clearSubmenu() {
+    if (this._choiceButtons && this._choiceButtons.length) {
+      this._choiceButtons.forEach(btn => btn.g.destroy(true));
+    }
+    this._choiceButtons = [];
+    this._submenuPanel?.destroy(true);
+    this._submenuPanel = null;
+    this._submenuTitle?.destroy();
+    this._submenuTitle = null;
+    this._submenuBack?.destroy(true);
+    this._submenuBack = null;
+  }
+
+  _closeSubMenu() {
+    this._clearSubmenu();
+    this._rebuildMainActions();
+  }
+
+  _openSubmenu(type) {
+    this._menuMode = type;
+    this._clearSubmenu();
+
     const W = this.scale.width;
-    const H = this.scale.height;
-    this._buildActionButtons(W, H);
+    const title = type === 'skill' ? 'Select a Skill' : 'Select an Item';
+    this._submenuPanel = makePanel(this, W / 2, 366, 640, 250, { fill: 0x100816, alpha: 0.98, stroke: 0x9f4cff, depth: 5200 });
+    this._submenuTitle = this.add.text(W / 2, 238, title, {
+      fontSize: '18px',
+      color: '#ffe3ff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(5201);
+
+    const entries = type === 'skill' ? this._skillEntries() : this._itemEntries();
+    const list = entries.length ? entries : [{ label: 'None available', disabled: true }];
+    const x = W / 2;
+    const y0 = 285;
+    const gap = 42;
+
+    list.slice(0, 5).forEach((entry, idx) => {
+      const y = y0 + idx * gap;
+      const b = createButton(this, x, y, 520, 34, entry.label, () => {
+        if (!entry.disabled) entry.action();
+      }, {
+        fill: entry.disabled ? 0x1b1323 : 0x251431,
+        stroke: entry.disabled ? 0x5a4e6a : 0xc88cff,
+        textColor: entry.disabled ? '#675f75' : '#ffffff',
+        fontSize: '13px',
+        depth: 5202,
+        hoverFill: 0x41204a,
+      });
+      if (entry.disabled) b.t.setAlpha(0.5);
+      this._choiceButtons.push(b);
+    });
+
+    this._submenuBack = createButton(this, W / 2, 516, 220, 36, 'Back', () => this._rebuildMainActions(), {
+      fill: 0x1a1022,
+      stroke: 0x8f4df0,
+      fontSize: '13px',
+      depth: 5202,
+      hoverFill: 0x41204a,
+    });
+    this._choiceButtons.push(this._submenuBack);
   }
 
-  // ─── REFRESH ALL DISPLAYS ──────────────────────────────────────────────────
-  _refreshAll(msg = '') {
-    const s = this.state;
-    this._pHp.set(s.hp,   s.maxHp);
-    this._pSta.set(s.sta, s.maxSta);
-    this._pWil.set(s.wil, s.maxWil);
-    this._pCorr.set(s.corruption, 100);
-    this._pArou.set(s.arousal,    100);
-    this._eHp.set(this.enemy.hp,       this.enemy.maxHp);
-    this._ePres.set(this.enemy.pressure, 100);
-    this._refreshClothingPanel();
-    this._refreshIntent();
-    if (msg) this._logPush(msg);
-    this._updateSubBanner();
+  _skillEntries() {
+    return SKILL_ORDER.map(id => SKILLS.find(sk => sk.id === id)).filter(Boolean).map(skill => {
+      const can = this.state.corruption >= skill.minCorruption && this.state.sta >= skill.staCost;
+      return {
+        label: `${skill.label}  (${skill.staCost} STA | Corruption ${skill.minCorruption}+ )`,
+        disabled: !can,
+        action: () => this._useSkill(skill),
+      };
+    });
   }
 
-  _updateSubBanner() {
-    const tier = corruptionTier(this.state.corruption);
-    const hb   = isHBound(this.state) ? '  ⚠ H-BOUND' : '';
-    const bound = this.playerBuff.bindTurns > 0 ? '  ⛓ BOUND' : '';
-    this._subBanner.setText(`${this.encounter.label}  •  ${tier.label}${hb}${bound}`);
+  _itemEntries() {
+    return ITEM_ORDER.map(id => ITEMS[id] && { id, item: ITEMS[id] }).filter(Boolean).map(({ id, item }) => {
+      const qty = this.state.items[id] || 0;
+      const can = qty > 0 && item.usableInBattle;
+      return {
+        label: `${item.label}  ×${qty} — ${item.desc}`,
+        disabled: !can,
+        action: () => this._useItem(id, item),
+      };
+    });
   }
 
-  _refreshIntent() {
-    const info = INTENT_INFO[this.enemy.intent] || INTENT_INFO.strike;
-    this._intentText.setText(`INTENT: ${info.label}\n${info.desc}`);
-    this._intentText.setColor(info.color);
+  _updateFacing(heroFaceRight = true) {
+    if (this.hero) this.hero.setFlipX(!heroFaceRight);
+    if (this.enemySprite) this.enemySprite.setFlipX(heroFaceRight);
   }
 
-  _logPush(msg) {
-    if (!msg) return;
-    this._log.push(msg);
-    if (this._log.length > 5) this._log.shift();
-    if (this._logText) this._logText.setText(this._log.slice(-4).join('\n'));
-  }
+  _mainAction(index) {
+    if (this._busy || this._ended) return;
+    if (this._menuMode !== 'main') return;
 
-  // ─── PLAYER ACTIONS ────────────────────────────────────────────────────────
-  _chooseAction(index) {
-    if (this._ended || this._busy || this._turn !== 'player') return;
-    const acts = this._getActions();
-    const act  = acts[index];
-    if (!act || act.disabled) return;
-    this._busy = true;
-
+    const hBound = isHBound(this.state);
     switch (index) {
-      case 0: return isHBound(this.state) ? this._playerStruggle() : this._playerAttack(false);
-      case 1: return this._playerAttack(true);   // Heavy
-      case 2: return this._playerGuard();
-      case 3: return this._playerFocus();
-      case 4: return this._playerSkill();
-      case 5: return this._playerItem();
-      case 6: return this._playerFlee();
-      default: this._busy = false;
+      case 0:
+        if (hBound) return this._struggle();
+        return this._attack(false);
+      case 1:
+        return this._attack(true);
+      case 2:
+        return this._guard();
+      case 3:
+        return this._openSubmenu('skill');
+      case 4:
+        return this._openSubmenu('item');
+      case 5:
+        return this._tryFlee();
+      default:
+        return;
     }
   }
 
-  _playerAttack(heavy = false) {
-    const s = this.state;
-    const attackKey = heavy ? 'hero-atk2' : 'hero-atk1';
-    if (this._heroSprite?.anims) this._heroSprite.play(attackKey, true);
+  _struggle() {
+    if (this._busy || this._ended) return;
+    this._busy = true;
+    this._logPush('You struggle against the pressure and force space back into your stance.');
+    this.state.arousal = Math.max(0, this.state.arousal - 18);
+    this.state.wil = Math.max(0, this.state.wil - 2);
+    this._playerBoundTurns = Math.max(0, this._playerBoundTurns - 1);
+    saveState(this.state);
+    this._heroAnim('hero-guard');
+    this._heroStep(26, () => this._finishPlayerTurn());
+  }
 
-    this.time.delayedCall(180, () => {
-      const base = heavy ? 18 : 11;
-      const focBonus = Math.floor(this.playerBuff.focusBonus / 2.5);
-      const tier = corruptionTier(s.corruption);
-      const corrBonus = tier.tier;
-      let dmg = base + focBonus + corrBonus + Math.floor(s.day * 0.8);
-
-      // Enemy guard reduces damage
-      if (this.enemy.intent === 'guard') dmg = Math.round(dmg * 0.55);
-      if (this.enemy.weakened > 0)        dmg = Math.round(dmg * 1.25);
-      dmg = Math.max(1, dmg);
-
-      this.enemy.hp = clamp(this.enemy.hp - dmg, 0, this.enemy.maxHp);
-      if (heavy) s.sta = clamp(s.sta - 14, 0, s.maxSta);
-      else       s.sta = clamp(s.sta - 5,  0, s.maxSta);
-
-      this.playerBuff.focusBonus = 0;
-      this.playerBuff.guard = false;
-
-      // Shake enemy on hit
-      if (s.settings.shake) this.cameras.main.shake(40, 0.004);
-      this._tweenHit(this._enemySprite);
-      if (this._heroSprite?.anims) {
-        this.time.delayedCall(220, () => { if (!this._ended) this._heroSprite.play('hero-idle', true); });
-      }
-
-      this._logPush(`Verity ${heavy ? 'heavy strikes' : 'attacks'} for ${dmg} damage.`);
-      this._refreshAll();
+  _attack(heavy) {
+    if (this._busy || this._ended) return;
+    if (this._menuMode !== 'main') return;
+    if (this._playerBoundTurns > 0 || isHBound(this.state)) {
+      this._logPush('You are too overwhelmed to attack. Struggle first.');
+      return;
+    }
+    this._busy = true;
+    const cost = heavy ? 10 : 4;
+    this.state.sta = Math.max(0, this.state.sta - cost);
+    const base = heavy ? 20 : 13;
+    this._logPush(heavy ? 'Heavy strike!' : 'You lash out.');
+    this._heroAnim('hero-atk1');
+    this._heroStep(heavy ? 54 : 34, () => {
+      let dmg = base + Math.floor(this.state.lvl * 1.5) + Math.floor(this.state.corruption * 0.12);
+      if (heavy) dmg += 8;
+      if (this.enemyWeakTurns > 0) dmg += 4;
+      if (this.enemyGuardTurns > 0) dmg = Math.max(1, Math.round(dmg * 0.65));
+      this._damageEnemy(dmg);
+      if (heavy) this.state.pressure = clamp(this.state.pressure + 2, 0, 100);
+      saveState(this.state);
       this._finishPlayerTurn();
     });
   }
 
-  _playerStruggle() {
-    // H-Bound struggle: chance to break free
-    const s = this.state;
-    const breakChance = 0.35 + (s.wil / s.maxWil) * 0.3;
-    if (Math.random() < breakChance) {
-      this.playerBuff.bindTurns = 0;
-      s.arousal = clamp(s.arousal - 20, 0, 100);
-      this._logPush('You struggle free from the H-Bind!');
-    } else {
-      applyArousal(s, 8);
-      this._logPush('You struggle but remain bound... arousal rises.');
-    }
-    this._refreshAll();
-    this._finishPlayerTurn();
+  _guard() {
+    if (this._busy || this._ended) return;
+    if (this._menuMode !== 'main') return;
+    this._busy = true;
+    this.playerGuardTurns = 1;
+    this.state.sta = Math.max(0, this.state.sta - 2);
+    this.state.pressure = Math.max(0, this.state.pressure - 2);
+    this._logPush('You brace and guard.');
+    this._heroAnim('hero-guard');
+    this._heroStep(12, () => this._finishPlayerTurn());
+    saveState(this.state);
   }
 
-  _playerGuard() {
-    this.playerBuff.guard = true;
-    this.state.sta = clamp(this.state.sta + 8, 0, this.state.maxSta);
-    this.state.wil = clamp(this.state.wil + 3, 0, this.state.maxWil);
-    if (this._heroSprite?.anims) this._heroSprite.play('hero-guard', true);
-    this._logPush('Guard raised — incoming damage halved, stamina recovered.');
-    this._refreshAll();
-    this._finishPlayerTurn();
-  }
-
-  _playerFocus() {
-    this.playerBuff.focusBonus = clamp(this.playerBuff.focusBonus + 22, 0, 80);
-    this.state.sta = clamp(this.state.sta + 12, 0, this.state.maxSta);
-    this.state.wil = clamp(this.state.wil + 5,  0, this.state.maxWil);
-    this.state.arousal = clamp(this.state.arousal - 10, 0, 100); // Redirect arousal into focus
-    this._logPush('Focus sharpens. Arousal redirected. Next attack empowered.');
-    this._refreshAll();
-    this._finishPlayerTurn();
-  }
-
-  _playerSkill() {
-    const s = this.state;
-    const tier = corruptionTier(s.corruption);
-    const available = SKILLS.filter(sk => s.corruption >= sk.minCorruption && s.sta >= sk.staCost);
-    if (!available.length) {
-      this._logPush('No skills available at current corruption level.');
-      this._busy = false;
+  _useSkill(skill) {
+    if (this._busy || this._ended) return;
+    if (this.state.corruption < skill.minCorruption || this.state.sta < skill.staCost) {
+      this._logPush('Not enough corruption or stamina for that skill.');
       return;
     }
-    const skill = available[available.length - 1]; // highest tier unlocked
-    s.sta = clamp(s.sta - skill.staCost, 0, s.maxSta);
-    const msg = skill.effect(s, this);
-    this._logPush(`[${tier.label}] ${msg}`);
-    this._refreshAll();
-    this._finishPlayerTurn();
-  }
-
-  _playerItem() {
-    const s = this.state;
-    // Priority: flash flask if bound, else healing potion, else holy water
-    let used = false;
-    let msg = '';
-
-    if (this.playerBuff.bindTurns > 0 && s.items.flashFlask > 0) {
-      s.items.flashFlask -= 1;
-      const effect = ITEMS.flashFlask.effect(s, this);
-      this.enemy.stunned = Math.max(this.enemy.stunned, 1);
-      this.playerBuff.bindTurns = 0;
-      msg = effect;
-      used = true;
-    } else if (s.items.healingPotion > 0) {
-      s.items.healingPotion -= 1;
-      msg = ITEMS.healingPotion.effect(s);
-      used = true;
-    } else if (s.items.flashFlask > 0) {
-      s.items.flashFlask -= 1;
-      msg = ITEMS.flashFlask.effect(s, this);
-      this.enemy.stunned = Math.max(this.enemy.stunned, 1);
-      used = true;
-    } else if (s.items.holyWater > 0 && !this.encounter.isBoss) {
-      s.items.holyWater -= 1;
-      msg = ITEMS.holyWater.effect(s);
-      used = true;
-    } else if (s.items.holyWater > 0 && this.encounter.isBoss) {
-      // Holy Water deals bonus damage to Patron
-      s.items.holyWater -= 1;
-      const bonusDmg = 30;
-      this.enemy.hp = clamp(this.enemy.hp - bonusDmg, 0, this.enemy.maxHp);
-      msg = ITEMS.holyWater.effect(s) + ` Holy Water scalds the Patron for ${bonusDmg} extra damage!`;
-      used = true;
-    }
-
-    if (!used) {
-      this._logPush('No usable items available.');
-      this._busy = false;
-      return;
-    }
-
+    this._busy = true;
+    this._menuMode = 'main';
+    this.state.sta = Math.max(0, this.state.sta - skill.staCost);
+    const msg = skill.effect(this.state, this);
+    this.playerVeilTurns = Math.max(this.playerVeilTurns, this.playerVeilActive ? 1 : 0);
+    this.enemyWeakTurns = Math.max(this.enemyWeakTurns, this.enemyWeakened || 0);
+    this.enemyStunnedTurns = Math.max(this.enemyStunnedTurns, this.enemyStunned || 0);
+    this.playerVeilActive = false;
+    this.enemyWeakened = 0;
+    this.enemyStunned = 0;
     this._logPush(msg);
-    this._refreshAll();
-    this._finishPlayerTurn();
-  }
-
-  _playerFlee() {
-    const s = this.state;
-    const chance = 0.40 + (s.sta / s.maxSta) * 0.25 - (s.pressure / 100) * 0.1;
-    if (Math.random() < chance) {
-      s.pressure = clamp(s.pressure + 4, 0, 100);
-      s.arousal  = 0;
-      this._logPush('You retreat from the fight.');
-      saveState(s);
-      this._ended = true;
-      this._showOutcome('Retreat', 'You escape — but the encounter lingers.', 0x182038);
-      this.time.delayedCall(1200, () => this._returnToWorld({ outcome: 'flee' }));
-    } else {
-      s.pressure = clamp(s.pressure + 6, 0, 100);
-      this._logPush('Escape failed — enemy retaliates!');
-      this._refreshAll();
-      this._busy = false;
-      this._turn = 'enemy';
-      this.time.delayedCall(300, () => this._resolveEnemyTurn(true));
-    }
-  }
-
-  _finishPlayerTurn() {
-    if (this._checkEnd()) return;
-    this._turn = 'enemy';
-    this.time.delayedCall(360, () => this._resolveEnemyIntent());
-  }
-
-  // ─── ENEMY AI ──────────────────────────────────────────────────────────────
-  _resolveEnemyIntent() {
-    if (this._ended) return;
-    const intents = [...this.encounter.intents];
-
-    // Pressure-based escalation
-    if (this.state.pressure > 60) intents.push('heavyStrike');
-    if (this.state.corruption > 40 && this.encounter.arousalAttack) intents.push('arouse');
-    if (intactCount(this.state.clothing) > 0 && this.encounter.stripChance > 0.3) intents.push('heavyStrip');
-
-    // Stunned: can't act
-    if (this.enemy.stunned > 0) {
-      this.enemy.intent = 'guard';
-      this.enemy.stunned -= 1;
-    } else {
-      this.enemy.intent = Phaser.Math.RND.pick(intents);
-    }
-
-    this._turnBanner.setText('ENEMY TURN');
-    this._refreshAll();
-    this.time.delayedCall(500, () => this._resolveEnemyTurn(false));
-  }
-
-  _resolveEnemyTurn(punishFlee = false) {
-    if (this._ended) return;
-    const s = this.state;
-    const intent = this.enemy.intent;
-    const guard  = this.playerBuff.guard ? 0.45 : 1.0;
-    const veil   = this.playerBuff.veilActive ? 0.2 : 1.0;
-    const weakMod = this.enemy.weakened > 0 ? 0.75 : 1.0;
-
-    if (this.enemy.weakened > 0) this.enemy.weakened--;
-    this.playerBuff.guard = false;
-    this.playerBuff.veilActive = false;
-
-    let strippedLayer = null;
-
-    switch (intent) {
-      case 'guard':
-        this.enemy.pressure = clamp(this.enemy.pressure + 8, 0, 100);
-        this._logPush(`${this.encounter.label} guards and regains pressure.`);
-        break;
-
-      case 'feint': {
-        const dmg = Math.max(1, Math.round(this.encounter.atk * 0.55 * guard * veil * weakMod));
-        applyDamage(s, dmg, 3, 2, 2);
-        this._tweenHit(this._heroSprite);
-        this._logPush(`${this.encounter.label} feints — deals ${dmg} damage.`);
-        break;
-      }
-
-      case 'heavyStrike': {
-        const dmg = Math.max(2, Math.round((this.encounter.atk + 8) * guard * veil * weakMod));
-        applyDamage(s, dmg, 6, 4, 5);
-        this._tweenHit(this._heroSprite);
-        if (s.settings.shake) this.cameras.main.shake(80, 0.006);
-        this._logPush(`${this.encounter.label} heavy strikes for ${dmg} damage!`);
-        // Chance to also strip clothing on heavy hit
-        if (Math.random() < this.encounter.stripChance * 0.6) {
-          strippedLayer = this._doStripAttack(s);
-        }
-        break;
-      }
-
-      case 'arouse':
-        if (this.encounter.arousalAttack) {
-          const aroAmount = 18 + Math.floor(s.sensitivity / 5);
-          applyArousal(s, aroAmount);
-          s.wil = clamp(s.wil - 6, 0, s.maxWil);
-          this._logPush(`${this.encounter.label}'s touch inflicts arousal (+${aroAmount}). WIL weakened.`);
-          if (isHBound(s)) this._logPush('⚠ H-BOUND — Arousal maxed. Normal attacks are disabled for 2 turns!');
-        }
-        break;
-
-      case 'heavyStrip': {
-        const dmg = Math.max(1, Math.round(this.encounter.atk * 0.7 * veil * weakMod));
-        applyDamage(s, dmg, 4, 3, 3);
-        strippedLayer = this._doStripAttack(s);
-        this._tweenHit(this._heroSprite);
-        this._logPush(`${this.encounter.label} tears at your clothing!`);
-        break;
-      }
-
-      case 'bind':
-        if (this.encounter.bindAttack) {
-          this.playerBuff.bindTurns = 2;
-          applyArousal(s, 25 + Math.floor(s.sensitivity / 4));
-          this._logPush(`⛓ ${this.encounter.label} binds you! Use Flash Flask or Struggle to break free.`);
-        }
-        break;
-
-      case 'voidPulse': {
-        const dmg = Math.max(3, Math.round((this.encounter.atk + 14) * veil * weakMod));
-        applyDamage(s, dmg, 8, 8, 8);
-        applyCorruption(s, 6);
-        this._tweenHit(this._heroSprite);
-        if (s.settings.shake) this.cameras.main.shake(100, 0.008);
-        this._logPush(`Void Pulse hits for ${dmg} damage! Corruption seeps in (+6).`);
-        break;
-      }
-
-      default: {
-        // Standard strike
-        const dmg = Math.max(1, Math.round(this.encounter.atk * guard * veil * weakMod * (punishFlee ? 1.2 : 1)));
-        applyDamage(s, dmg, 4, 2, 3);
-        this._tweenHit(this._heroSprite);
-        this._logPush(punishFlee ? `Punished for fleeing: ${dmg} damage.` : `${this.encounter.label} strikes for ${dmg} damage.`);
-        break;
-      }
-    }
-
-    // Random strip chance on any offensive move
-    if (!strippedLayer && ['strike','heavyStrike','voidPulse'].includes(intent) && Math.random() < this.encounter.stripChance * 0.3) {
-      strippedLayer = this._doStripAttack(s);
-    }
-
-    if (strippedLayer) {
-      this._logPush(`★ ${strippedLayer} was torn away! Vulnerability increases.`);
-      if (s.settings.shake) this.cameras.main.shake(60, 0.005);
-    }
-
-    // Bind countdown
-    if (this.playerBuff.bindTurns > 0) this.playerBuff.bindTurns--;
-
-    this._refreshAll();
-    saveState(s);
-
-    if (this._checkEnd()) return;
-
-    this._turn = 'player';
-    this._turnBanner.setText('YOUR TURN');
-    this.time.delayedCall(260, () => {
-      this._rebuildButtons();
-      this._busy = false;
+    this._heroAnim('hero-atk1');
+    this._heroStep(36, () => {
+      saveState(this.state);
+      this._refreshMeters();
+      this._endIfNeeded(() => this._finishPlayerTurn());
     });
   }
 
-  _doStripAttack(s) {
-    // Target the outermost intact layer
-    for (const slot of ['outer','upper','lower','inner','shoes']) {
-      if (!s.clothing[slot].stripped) {
-        const dmg = Phaser.Math.Between(25, 55);
-        const stripped = damageClothingLayer(s, slot, dmg);
-        return stripped; // name if stripped, null if only damaged
+  _useItem(itemId, item) {
+    if (this._busy || this._ended) return;
+    const qty = this.state.items[itemId] || 0;
+    if (qty <= 0 || !item.usableInBattle) {
+      this._logPush('That item cannot be used right now.');
+      return;
+    }
+    this._busy = true;
+    this.state.items[itemId] = qty - 1;
+    const msg = item.effect(this.state, this);
+    this.playerVeilTurns = Math.max(this.playerVeilTurns, this.playerVeilActive ? 1 : 0);
+    this.enemyWeakTurns = Math.max(this.enemyWeakTurns, this.enemyWeakened || 0);
+    this.enemyStunnedTurns = Math.max(this.enemyStunnedTurns, this.enemyStunned || 0);
+    this.playerVeilActive = false;
+    this.enemyWeakened = 0;
+    this.enemyStunned = 0;
+    this._logPush(msg);
+    this._heroAnim('hero-guard');
+    this._heroStep(10, () => {
+      saveState(this.state);
+      this._refreshMeters();
+      this._endIfNeeded(() => this._finishPlayerTurn());
+    });
+  }
+
+  _tryFlee() {
+    if (this._busy || this._ended) return;
+    if (this._menuMode !== 'main') {
+      this._rebuildMainActions();
+      return;
+    }
+    this._busy = true;
+    const chance = 0.55 + Math.min(0.25, this.state.wil / 500);
+    const roll = Math.random();
+    if (roll < chance) {
+      this._logPush('You escape into the corridor.');
+      this.state.pressure = clamp(this.state.pressure + 4, 0, 100);
+      this._endBattle('flee');
+    } else {
+      this._logPush('Escape failed!');
+      this.state.pressure = clamp(this.state.pressure + 6, 0, 100);
+      this._heroStep(-10, () => this._enemyTurn());
+    }
+    saveState(this.state);
+  }
+
+  _finishPlayerTurn() {
+    if (this._ended) return;
+    this._refreshMeters();
+    this._endIfNeeded(() => {
+      this._turn = 'enemy';
+      this._turnBanner.setText('ENEMY TURN');
+      this.time.delayedCall(240, () => this._enemyTurn());
+    });
+  }
+
+  _enemyTurn() {
+    if (this._ended) return;
+    if (this.enemyStunnedTurns > 0) {
+      this.enemyStunnedTurns -= 1;
+      this._logPush(`${this.enemy.label} is stunned and loses the turn.`);
+      this._turnBackToPlayer();
+      return;
+    }
+
+    const intent = this._nextIntent();
+    this._setIntent(intent);
+    const info = INTENT_INFO[intent] || INTENT_INFO.strike;
+    this._logPush(`${this.enemy.label} prepares ${info.label}.`);
+    this._enemyAnim(intent, () => {
+      this._resolveEnemyIntent(intent);
+      this._refreshMeters();
+      this._endIfNeeded(() => this._turnBackToPlayer());
+    });
+  }
+
+  _nextIntent() {
+    const intents = this.enemy.intents.length ? this.enemy.intents : ['strike'];
+    const intent = intents[this.intentIndex % intents.length];
+    this.intentIndex += 1;
+    return intent;
+  }
+
+  _resolveEnemyIntent(intent) {
+    const s = this.state;
+    const enemy = this.enemy;
+    let dmg = enemy.atk;
+    let staDrain = 0;
+    let wilDrain = 0;
+    let pressureAdd = 0;
+    let log = '';
+
+    switch (intent) {
+      case 'strike':
+        dmg += 0;
+        staDrain = 2;
+        log = `${enemy.label} strikes.`;
+        break;
+      case 'heavyStrike':
+        dmg += 8;
+        staDrain = 4;
+        wilDrain = 1;
+        pressureAdd = 3;
+        log = `${enemy.label} lands a heavy blow.`;
+        break;
+      case 'guard':
+        this.enemyGuardTurns = 2;
+        this._logPush(`${enemy.label} guards and braces.`);
+        this._setEnemyStatus('Guarding', '#88ccff');
+        return;
+      case 'feint':
+        this.enemyWeakTurns = 1;
+        dmg = Math.max(1, Math.round(dmg * 0.7));
+        log = `${enemy.label} feints to throw you off.`;
+        break;
+      case 'arouse':
+        applyArousal(s, 14);
+        pressureAdd = 4;
+        log = `${enemy.label} floods the room with pressure.`;
+        break;
+      case 'heavyStrip':
+        dmg += 5;
+        pressureAdd = 6;
+        const stripped = this._stripRandomLayer(18);
+        if (stripped) log = `${enemy.label} tears away your ${stripped}.`;
+        else log = `${enemy.label} targets your clothing.`;
+        break;
+      case 'bind':
+        this.playerBoundTurns = Math.min(3, this.playerBoundTurns + 2);
+        dmg = Math.round(dmg * 0.55);
+        pressureAdd = 4;
+        log = `${enemy.label} tries to bind your movement.`;
+        break;
+      case 'voidPulse':
+        dmg += 12;
+        staDrain = 4;
+        wilDrain = 3;
+        pressureAdd = 8;
+        applyCorruption(s, 4);
+        log = `${enemy.label} unleashes a void pulse.`;
+        break;
+      default:
+        log = `${enemy.label} attacks.`;
+        break;
+    }
+
+    if (this.enemyWeakTurns > 0 && intent !== 'feint') {
+      dmg = Math.max(1, Math.round(dmg * 0.8));
+    }
+
+    if (this.playerGuardTurns > 0) {
+      dmg = Math.max(1, Math.round(dmg * 0.55));
+      this.playerGuardTurns -= 1;
+    }
+
+    if (this.playerVeilTurns > 0) {
+      dmg = Math.max(1, Math.round(dmg * 0.2));
+      this.playerVeilTurns -= 1;
+    }
+
+    const finalDmg = applyDamage(s, dmg, staDrain, wilDrain, pressureAdd);
+
+    this._logPush(log + `  (-${finalDmg} HP)`);
+    this._heroAnim('hero-hurt');
+    this._heroFlash(0xff6677);
+
+    if (this.enemyWeakTurns > 0 && intent !== 'feint') this.enemyWeakTurns -= 1;
+    if (this.playerBoundTurns > 0 && intent !== 'bind') this.playerBoundTurns -= 1;
+
+    if (intent === 'arouse' || intent === 'voidPulse') {
+      s.corruption = clamp(s.corruption + (intent === 'voidPulse' ? 2 : 1), 0, 100);
+    }
+    saveState(s);
+  }
+
+  _turnBackToPlayer() {
+    if (this._ended) return;
+    if (this.playerBoundTurns > 0) this.playerBoundTurns -= 1;
+    this._turn = 'player';
+    this._turnBanner.setText('YOUR TURN');
+    this._setIntent(this.enemy.intents[this.intentIndex % this.enemy.intents.length], true);
+    this._rebuildMainActions();
+    this._busy = false;
+    this._refreshMeters();
+  }
+
+  _setIntent(intent, silent = false) {
+    const info = INTENT_INFO[intent] || INTENT_INFO.strike;
+    this._intentText.setText(info.label);
+    this._intentText.setColor(info.color);
+    this._intentDesc.setText(info.desc);
+    this._enemyStatusText = this._enemyStatusText || this.add.text(this.scale.width - 520, 202, '', { fontSize: '12px', color: '#e4d7ef' }).setDepth(5002);
+    this._enemyStatusText.setText(`Intent: ${info.desc}`);
+    if (!silent) {
+      this.tweens.add({ targets: this._intentCard, scale: { from: 1.0, to: 1.02 }, yoyo: true, duration: 180 });
+    }
+  }
+
+  _setEnemyStatus(text, color) {
+    if (!this._enemyStatusText) {
+      this._enemyStatusText = this.add.text(this.scale.width - 520, 202, '', { fontSize: '12px', color: '#e4d7ef' }).setDepth(5002);
+    }
+    this._enemyStatusText.setText(text).setColor(color || '#e4d7ef');
+  }
+
+  _heroStep(dx, cb) {
+    this.hero.setFlipX(false);
+    this.tweens.add({
+      targets: this.hero,
+      x: this._playerHomeX + dx,
+      duration: 140,
+      yoyo: true,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        this.hero.x = this._playerHomeX;
+        if (this.anims.exists('hero-idle')) this.hero.play('hero-idle', true);
+        if (cb) cb();
+      },
+    });
+  }
+
+  _enemyAnim(intent, cb) {
+    const move = intent === 'heavyStrike' || intent === 'voidPulse' ? -58 : -34;
+    if (this.enemySprite.anims && this.anims.exists('sk-atk') && this.enemySprite.texture.key === 'sk-idle') {
+      this.enemySprite.play('sk-atk', true);
+    }
+    this.enemySprite.setFlipX(true);
+    this.tweens.add({
+      targets: this.enemySprite,
+      x: this._enemyHomeX + move,
+      duration: 160,
+      yoyo: true,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        this.enemySprite.x = this._enemyHomeX;
+        if (this.enemySprite.texture.key === 'sk-idle' && this.anims.exists('sk-idle')) {
+          this.enemySprite.play('sk-idle', true);
+        }
+        if (cb) cb();
+      },
+    });
+  }
+
+  _heroAnim(anim) {
+    if (anim && this.anims.exists(anim) && this.hero.texture.key !== anim) {
+      try { this.hero.play(anim, true); } catch (e) {}
+    }
+    if (anim === 'hero-atk1' && this.anims.exists('hero-atk1')) {
+      this.hero.play('hero-atk1', true);
+      this.time.delayedCall(180, () => { if (!this._ended) this.hero.play('hero-idle', true); });
+    } else if (anim === 'hero-guard' && this.anims.exists('hero-guard')) {
+      this.hero.play('hero-guard', true);
+      this.time.delayedCall(120, () => { if (!this._ended) this.hero.play('hero-idle', true); });
+    } else if (anim === 'hero-hurt' && this.anims.exists('hero-hurt')) {
+      this.hero.play('hero-hurt', true);
+      this.time.delayedCall(160, () => { if (!this._ended) this.hero.play('hero-idle', true); });
+    }
+  }
+
+  _heroFlash(color) {
+    this.tweens.add({ targets: this.hero, tint: color, duration: 80, yoyo: true, repeat: 1 });
+    this.cameras.main.shake(70, 0.004);
+  }
+
+  _damageEnemy(dmg) {
+    this.enemy.hp = clamp(this.enemy.hp - dmg, 0, this.enemy.maxHp);
+    this.enemy.pressure = clamp((this.enemy.pressure || 100) - Math.max(2, Math.round(dmg / 2)), 0, 100);
+    this._setEnemyStatus(`HP -${dmg}`, '#ff88aa');
+    this._enemyFlash();
+    this._logPush(`${this.enemy.label} takes ${dmg} damage.`);
+    if (this.enemyGuardTurns > 0) this.enemyGuardTurns = Math.max(0, this.enemyGuardTurns - 1);
+  }
+
+  _enemyFlash() {
+    this.tweens.add({ targets: this.enemySprite, tint: 0xff88aa, duration: 70, yoyo: true, repeat: 1 });
+    this.tweens.add({ targets: this.enemySprite, x: this._enemyHomeX - 10, duration: 60, yoyo: true, ease: 'Quad.easeOut' });
+  }
+
+  _stripRandomLayer(amount = 16) {
+    const slots = ['outer','upper','lower','inner','shoes'];
+    for (const slot of slots) {
+      if (!this.state.clothing[slot].stripped) {
+        const stripped = damageClothingLayer(this.state, slot, amount);
+        if (stripped) {
+          this.state.pressure = clamp(this.state.pressure + 4, 0, 100);
+          this._logPush(`${stripped} is stripped away!`);
+          return stripped;
+        }
       }
     }
     return null;
   }
 
-  // ─── END CHECK ─────────────────────────────────────────────────────────────
-  _checkEnd() {
-    if (this.enemy.hp <= 0) { this._victory(); return true; }
-    if (this.state.hp <= 0) { this._defeat();  return true; }
+  _endIfNeeded(cb) {
+    if (this._ended) return true;
+    if (this.enemy.hp <= 0) {
+      this._victory();
+      return true;
+    }
+    if (this.state.hp <= 0 || this.state.wil <= 0) {
+      this._defeat();
+      return true;
+    }
+    if (cb) cb();
     return false;
   }
 
-  // ─── VICTORY ───────────────────────────────────────────────────────────────
   _victory() {
     if (this._ended) return;
     this._ended = true;
 
-    const reward = { ...this.encounter.reward, gold: Math.round(this.encounter.reward.gold * (1 + this.state.day * 0.1)) };
-    applyVictoryReward(this.state, reward);
-
-    // Boss-specific consequence
-    if (this.encounter.isBoss) {
-      this.state.flags.patronDefeated = true;
-      this.state.objective = 'The Patron is vanquished. Return to the Elder.';
-    } else {
-      if (this.state.questStage === 0) this.state.questStage = 1;
-    }
-
-    const goldMsg  = `+${reward.gold}g`;
-    const itemMsg  = reward.item ? ` + 1x ${reward.item}` : '';
-    const corrMsg  = reward.corruptionDrop ? ` Corruption −${reward.corruptionDrop}` : '';
-
-    this._logPush(`Victory! ${goldMsg}${itemMsg}${corrMsg}`);
-    this._showOutcome('VICTORY', `${this.encounter.label} is defeated.\n${goldMsg}${itemMsg}`, 0x112210);
+    applyVictoryReward(this.state, this._resolveEncounter().reward || {});
+    this.state.flags.firstBattle = true;
+    this.state.objective = this.encounter.isBoss ? 'The Patron has been defeated.' : 'Return to the corridor and keep moving.';
     saveState(this.state);
 
-    this.time.delayedCall(1600, () => this._returnToWorld({ outcome: 'victory', encounterId: this.encounter.id }));
+    this._logPush(`Victory! ${this._resolveEncounter().label} is defeated.`);
+    this._showOutcome('VICTORY', `${this._resolveEncounter().label} falls.\nRewards secured.`, 0x102012);
+    this._returnAfterDelay('victory');
   }
 
-  // ─── DEFEAT ────────────────────────────────────────────────────────────────
   _defeat() {
     if (this._ended) return;
     this._ended = true;
 
-    const strippedInfo = applyDefeatConsequences(this.state, this.encounter);
-    this.state.objective = 'Recover — rest in the Sanctuary Hall.';
-
-    let msg = `Defeated. Pressure +25. Max STA/WIL permanently reduced.`;
-    if (strippedInfo) msg += ` ${strippedInfo.name} stripped!`;
-
-    // Faction consequences
-    if (this.encounter.id === 'cultistSeducer' || this.encounter.id === 'patronBoss') {
-      this.state.factions.cult = clamp(this.state.factions.cult + 5, 0, 100);
-    }
-
-    this._logPush(msg);
-    this._showOutcome('DEFEAT', 'You have fallen.\nReturn to the Sanctuary Hall to recover.', 0x1e0608);
+    const stripped = applyDefeatConsequences(this.state, this._resolveEncounter());
+    this.state.objective = 'Recover in the bedroom. You need time to stand back up.';
+    this.state.corruption = clamp(this.state.corruption + 2, 0, 100);
     saveState(this.state);
 
-    this.time.delayedCall(1800, () => this._returnToWorld({
-      outcome: 'defeat',
-      strippedLayer: strippedInfo ? strippedInfo.name : null,
-    }));
+    this._logPush('You are overwhelmed.');
+    if (stripped) this._logPush(`${stripped.name} is torn away.`);
+    this._showOutcome('DEFEAT', 'You collapse.\nReturn to the bedroom and recover.', 0x24060b);
+    this._returnAfterDelay('defeat', stripped ? stripped.name : null);
   }
 
-  // ─── RETURN TO WORLD ───────────────────────────────────────────────────────
-  _returnToWorld(extra = {}) {
-    this.cameras.main.fade(500, 4, 2, 10, false, (cam, p) => {
-      if (p >= 1) {
-        this.scene.stop();
-        const parentScene = this.scene.manager.getScene(this._returnTo);
-        if (parentScene) {
-          this.scene.resume(this._returnTo, { battleDone: true, state: this.state, ...extra });
-        } else {
-          this.scene.start(this._returnTo, { state: this.state, spawnX: extra.outcome === 'defeat' ? 200 : undefined });
-        }
-      }
+  _endBattle(outcome = 'flee', strippedLayer = null) {
+    if (this._ended) return;
+    this._ended = true;
+
+    if (outcome === 'flee') {
+      this.state.pressure = clamp(this.state.pressure + 5, 0, 100);
+      this.state.corruption = clamp(this.state.corruption + 1, 0, 100);
+      this.state.objective = 'You escaped. Catch your breath and try again.';
+      saveState(this.state);
+      this._showOutcome('ESCAPE', 'You flee the encounter.', 0x101018);
+    }
+
+    this._returnAfterDelay(outcome, strippedLayer);
+  }
+
+  _returnAfterDelay(outcome, strippedLayer = null) {
+    this.time.delayedCall(1200, () => {
+      const payload = {
+        battleDone: true,
+        state: this.state,
+        outcome,
+        encounterId: this._resolveEncounter().id,
+        strippedLayer,
+      };
+      this.scene.stop();
+      this.scene.resume(this._returnTo, payload);
     });
   }
 
-  // ─── OUTCOME PANEL ─────────────────────────────────────────────────────────
   _showOutcome(title, body, color) {
     const W = this.scale.width;
-    const H = this.scale.height;
-    const panel = this.add.container(W / 2, H / 2).setDepth(9000).setScrollFactor(0);
-    const bg   = this.add.rectangle(0, 0, 560, 220, color, 0.96).setStrokeStyle(3, 0xcc88ff, 0.7);
-    const tTxt = this.add.text(0, -70, title, { fontSize: '34px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-    const bTxt = this.add.text(0, 20, body, { fontSize: '16px', color: '#e8d0f0', align: 'center', wordWrap: { width: 500 } }).setOrigin(0.5);
-    panel.add([bg, tTxt, bTxt]);
-
-    this.tweens.add({ targets: panel, scaleX: { from: 0.6, to: 1 }, scaleY: { from: 0.6, to: 1 }, alpha: { from: 0, to: 1 }, duration: 300, ease: 'Back.easeOut' });
+    const panel = this.add.container(W / 2, 350).setDepth(9000).setScrollFactor(0);
+    const bg = this.add.rectangle(0, 0, 560, 200, color, 0.96).setStrokeStyle(3, 0xdd99ff, 0.75);
+    const t = this.add.text(0, -66, title, { fontSize: '36px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+    const b = this.add.text(0, 8, body, { fontSize: '16px', color: '#eed9ff', align: 'center', wordWrap: { width: 500 }, lineSpacing: 4 }).setOrigin(0.5);
+    panel.add([bg, t, b]);
+    this.tweens.add({ targets: panel, alpha: { from: 0, to: 1 }, scale: { from: 0.92, to: 1 }, duration: 220, ease: 'Back.easeOut' });
   }
 
-  // ─── BOSS INTRO ────────────────────────────────────────────────────────────
-  _showBossIntro() {
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const panel = this.add.container(W / 2, H / 2).setDepth(9500).setScrollFactor(0);
-    const bg   = this.add.rectangle(0, 0, 720, 320, 0x06010c, 0.98).setStrokeStyle(3, 0xcc00ff, 0.9);
-    const tTxt = this.add.text(0, -110, 'THE PATRON', { fontSize: '42px', color: '#ff44ff', fontStyle: 'bold', stroke: '#220044', strokeThickness: 4 }).setOrigin(0.5);
-    const bTxt = this.add.text(0, -20, this.encounter.lore, { fontSize: '16px', color: '#ccbbdd', align: 'center', wordWrap: { width: 660 }, lineSpacing: 4 }).setOrigin(0.5);
-    const btn  = this.add.rectangle(0, 120, 240, 50, 0x330044, 0.9).setStrokeStyle(2, 0xff44ff, 0.8);
-    btn.setInteractive(new Phaser.Geom.Rectangle(-120,-25,240,50), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
-    const bLbl = this.add.text(0, 120, 'FACE IT', { fontSize: '20px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-    panel.add([bg, tTxt, bTxt, btn, bLbl]);
+  _logPush(msg) {
+    if (!msg) return;
+    this._log.push(msg);
+    if (this._log.length > 4) this._log.shift();
+    this._logText.setText(this._log.join('\n'));
+  }
 
-    this.tweens.add({ targets: panel, alpha: { from: 0, to: 1 }, duration: 600 });
+  _refreshMeters() {
+    const s = this.state;
+    this._pHp.set(s.hp, s.maxHp);
+    this._pSta.set(s.sta, s.maxSta);
+    this._pWil.set(s.wil, s.maxWil);
+    this._pCorr.set(s.corruption, 100);
+    this._pAr.set(s.arousal, 100);
 
-    btn.on('pointerdown', () => {
-      panel.destroy();
-      this._logPush('The Patron stirs... it has been waiting for you.');
-      this._logPush(this.encounter.lore);
-      this.time.delayedCall(60, () => this._resolveEnemyIntent());
+    this._eHp.set(this.enemy.hp, this.enemy.maxHp);
+    this._ePres.set(this.enemy.pressure, 100);
+    this._eDef.set(this.enemyGuardTurns > 0 ? 100 : 0, 100);
+
+    this._hpNum.setText(`Clothing DEF ${totalClothingDef(s.clothing)}  ·  Layers ${intactCount(s.clothing)}/5`);
+    this._enemyStatus.setText(
+      `${this.enemy.label}  ·  ${this.enemy.hp}/${this.enemy.maxHp} HP` +
+      (this.enemyGuardTurns > 0 ? '  ·  Guarding' : '') +
+      (this.enemyStunnedTurns > 0 ? '  ·  Stunned' : '') +
+      (this.enemyWeakTurns > 0 ? '  ·  Weakened' : '')
+    );
+    this._turnInfo.setText(`Press 1-6 or tap.  ${this.playerGuardTurns > 0 ? 'Guard active.' : ''}`);
+  }
+
+  _heroLunge(dx, cb) {
+    const startX = this._playerHomeX;
+    this.hero.setFlipX(false);
+    this.tweens.add({
+      targets: this.hero,
+      x: startX + dx,
+      duration: 130,
+      yoyo: true,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.hero.x = startX;
+        if (cb) cb();
+      },
     });
   }
 
-  // ─── UTIL ──────────────────────────────────────────────────────────────────
-  _tweenHit(sprite) {
-    if (!sprite) return;
-    this.tweens.add({ targets: sprite, alpha: { from: 0.4, to: 1 }, duration: 120 });
-    this.tweens.add({ targets: sprite, x: sprite.x + (sprite === this._enemySprite ? -12 : 12), yoyo: true, duration: 80, ease: 'Quad.easeOut' });
+  _enemyLunge(dx, cb) {
+    const startX = this._enemyHomeX;
+    this.enemySprite.setFlipX(true);
+    this.tweens.add({
+      targets: this.enemySprite,
+      x: startX + dx,
+      duration: 130,
+      yoyo: true,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.enemySprite.x = startX;
+        if (cb) cb();
+      },
+    });
   }
 
-  _makeProceduralHero(x, y) {
-    // Fallback graphic player representation
-    const g = this.add.graphics();
-    g.fillStyle(0xcc88ff, 1);
-    g.fillCircle(x, y - 60, 18); // head
-    g.fillRect(x - 14, y - 42, 28, 44); // body
-    g.fillRect(x - 24, y - 42, 10, 36); // L arm
-    g.fillRect(x + 14, y - 42, 10, 36); // R arm
-    g.fillRect(x - 14, y + 2, 12, 30);  // L leg
-    g.fillRect(x + 2, y + 2, 12, 30);   // R leg
-    return g;
+  _openPauseHelp() {
+    // no-op for now; ESC is reserved for flee/back out of menus
   }
-
-  // ─── HELPER: intactCount ────────────────────────────────────────────────────
 }

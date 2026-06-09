@@ -35,6 +35,12 @@ const config = {
   ],
 };
 
-window.addEventListener('load', () => {
+const startGame = () => {
   window.__veiledGame = new Phaser.Game(config);
-});
+};
+
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('load', startGame);
+} else {
+  startGame();
+}

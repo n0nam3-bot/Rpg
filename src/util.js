@@ -551,10 +551,18 @@ export function createButton(scene, x, y, w, h, label, onClick, opts = {}) {
   r.setInteractive(new Phaser.Geom.Rectangle(-w/2, -h/2, w, h), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
   const t = scene.add.text(0, 0, label, { fontSize: sz, color: opts.textColor || '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
   g.add([r, t]);
+  let fired = false;
+  const fire = () => {
+    if (fired) return;
+    fired = true;
+    if (onClick) onClick();
+  };
   r.on('pointerover',  () => r.setFillStyle(opts.hoverFill || 0x4a2060, 0.95));
-  r.on('pointerout',   () => r.setFillStyle(fill, 0.95));
-  r.on('pointerdown',  () => { if (onClick) onClick(); });
-  return { g, r, t, fire: () => { if (onClick) onClick(); } };
+  r.on('pointerout',   () => { r.setFillStyle(fill, 0.95); fired = false; });
+  r.on('pointerdown',  fire);
+  r.on('pointerup',    fire);
+  r.on('pointerupoutside', () => { fired = false; });
+  return { g, r, t, fire };
 }
 
 export function makePanel(scene, x, y, w, h, opts = {}) {
@@ -576,11 +584,11 @@ export function makeVirtualControls(scene) {
   const btns = {};
 
   const defs = [
-    ['left',    90,  H-90, 80, 80, '◀'],
-    ['right',  185,  H-90, 80, 80, '▶'],
-    ['jump',   W-290,H-90, 80, 80, 'JUMP'],
-    ['attack', W-185,H-90, 80, 80, 'ATK'],
-    ['interact',W-90,H-90, 80, 80, 'USE'],
+    ['left',     88, H-112, 92, 92, '◀'],
+    ['right',   192, H-112, 92, 92, '▶'],
+    ['jump',    W-310, H-112, 92, 92, 'JUMP'],
+    ['attack',  W-198, H-112, 92, 92, 'ATK'],
+    ['interact', W-86, H-112, 92, 92, 'USE'],
   ];
 
   defs.forEach(([key, bx, by, bw, bh, lbl]) => {
@@ -591,6 +599,7 @@ export function makeVirtualControls(scene) {
     r.setInteractive(new Phaser.Geom.Rectangle(-bw/2,-bh/2,bw,bh), Phaser.Geom.Rectangle.Contains, { useHandCursor:true });
     r.on('pointerdown',  () => { state[key] = true; });
     r.on('pointerup',    () => { state[key] = false; });
+    r.on('pointerupoutside', () => { state[key] = false; });
     r.on('pointerout',   () => { state[key] = false; });
     btns[key] = { r, t };
   });

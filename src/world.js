@@ -12,7 +12,7 @@ const HERO = keyFor('ruin_runners_shaia/sprites/shaia/sprites_common/common_00_i
 
 const WORLD_W = 7200;
 const WORLD_H = 720;
-const GROUND_Y = 570;
+const GROUND_Y = 480;
 
 // Zone boundaries
 const ZONES = {
@@ -28,7 +28,7 @@ export class WorldScene extends Phaser.Scene {
     this.state = normalizeState(data.state);
     this.state.sceneKey = 'WorldScene';
     this._spawnX = Number(data.spawnX || this.state.spawnX || 200);
-    this._spawnY = Number(data.spawnY || GROUND_Y - 60);
+    this._spawnY = Number(data.spawnY || GROUND_Y - 56);
     this._showPrologue = data.showPrologue || false;
     this._dialogueJustClosed = false;
     this._lastInteract = false;
@@ -56,8 +56,8 @@ export class WorldScene extends Phaser.Scene {
     });
 
     // ── PLAYER ─────────────────────────────────────────────────────────────
-    this.player = this.physics.add.sprite(this._spawnX, this._spawnY, HERO).setScale(0.86).setCollideWorldBounds(true);
-    this.player.body.setSize(68, 86, true);
+    this.player = this.physics.add.sprite(this._spawnX, this._spawnY, HERO).setScale(0.78).setCollideWorldBounds(true);
+    this.player.body.setSize(60, 78, true);
     this.player.setBounce(0.02);
     this._floors.forEach(f => this.physics.add.collider(this.player, f));
 
@@ -189,13 +189,13 @@ export class WorldScene extends Phaser.Scene {
   // ─── NPCs ──────────────────────────────────────────────────────────────────
   _createNPCs() {
     const defs = [
-      { key: 'elder',    x: 600,  y: GROUND_Y, spriteKey: 'npc-elder',    label: 'Elder Thane',     colour: '#ccaaff' },
-      { key: 'merchant', x: 1100, y: GROUND_Y, spriteKey: 'npc-merchant', label: 'Merchant Ida',    colour: '#ffcc88' },
-      { key: 'guard',    x: 2300, y: GROUND_Y, spriteKey: 'npc-guard',    label: 'Captain Serrin',  colour: '#88aacc' },
-      { key: 'witch',    x: 5500, y: GROUND_Y, spriteKey: 'npc-witch',    label: 'Witch Moira',     colour: '#cc88ff' },
+      { key: 'elder',    x: 650,  y: GROUND_Y - 4, spriteKey: 'npc-elder',    label: 'Elder Thane',     colour: '#ccaaff' },
+      { key: 'merchant', x: 1200, y: GROUND_Y - 6, spriteKey: 'npc-merchant', label: 'Merchant Ida',    colour: '#ffcc88' },
+      { key: 'guard',    x: 2350, y: GROUND_Y - 6, spriteKey: 'npc-guard',    label: 'Captain Serrin',  colour: '#88aacc' },
+      { key: 'witch',    x: 5550, y: GROUND_Y - 6, spriteKey: 'npc-witch',    label: 'Witch Moira',     colour: '#cc88ff' },
     ];
     return defs.map(d => {
-      const sprite = this.add.image(d.x, d.y - 50, d.spriteKey).setOrigin(0.5, 1).setScale(0.92);
+      const sprite = this.add.image(d.x, d.y - 50, d.spriteKey).setOrigin(0.5, 1).setScale(0.78);
       const nameTag = this.add.text(d.x, d.y - 110, d.label, {
         fontSize: '14px', color: d.colour, fontStyle: 'bold', backgroundColor: '#00000066', padding: { x: 6, y: 3 },
       }).setOrigin(0.5);
@@ -443,25 +443,25 @@ export class WorldScene extends Phaser.Scene {
   _findNear() {
     const px = this.player.x;
     const py = this.player.y;
-    const DIST = 100;
+    const DIST = 62;
 
     // NPCs
     for (const npc of this._npcs) {
-      if (Math.abs(px - npc.x) < DIST && Math.abs(py - npc.y) < 100) {
+      if (Math.abs(px - npc.x) < DIST && Math.abs(py - npc.y) < 64) {
         return { prompt: `Speak with ${npc.label} [E]`, action: () => this._openDialogue(npc.key) };
       }
     }
 
     // Doors
     for (const door of this._doors) {
-      if (Math.abs(px - door.x) < 70) {
+      if (Math.abs(px - door.x) < 58) {
         return { prompt: `Enter: ${door.label} [E]`, action: () => this._useDoor(door) };
       }
     }
 
     // Interactables
     for (const item of this._interactables) {
-      if (Math.abs(px - item.x) < 90 && Math.abs(py - item.y) < 100) {
+      if (Math.abs(px - item.x) < 70 && Math.abs(py - item.y) < 64) {
         return { prompt: item.prompt, action: item.action };
       }
     }
@@ -472,7 +472,7 @@ export class WorldScene extends Phaser.Scene {
   _checkPickups() {
     this._pickups.forEach(p => {
       if (p.collected) return;
-      if (Math.abs(this.player.x - p.x) < 40 && Math.abs(this.player.y - p.y) < 60) {
+      if (Math.abs(this.player.x - p.x) < 34 && Math.abs(this.player.y - p.y) < 52) {
         p.collected = true;
         p.sprite.destroy();
         if (p.type === 'potion') {
@@ -574,8 +574,8 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     let spawnX = 200;
-    if (door.targetArea === 'catacombs') { spawnX = 2450; }
-    if (door.targetArea === 'sanctum')   { spawnX = 5650; }
+    if (door.targetArea === 'catacombs') { spawnX = 2460; }
+    if (door.targetArea === 'sanctum')   { spawnX = 5660; }
     this.state.spawnX = spawnX;
     this.state.area   = door.targetArea;
     saveState(this.state);
