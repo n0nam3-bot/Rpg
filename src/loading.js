@@ -1,89 +1,86 @@
-import {
-  loadManifest,
-  registerAnimations,
-  generateProceduralTextures,
-  loadState, freshState,
-} from './util.js';
+import { ALL_ASSET_PATHS, EXTRA_PATHS, ASSET_ROOT, K, generateProceduralTextures, loadState, freshState } from './util.js';
 
 export class LoadingScene extends Phaser.Scene {
   constructor() { super({ key: 'LoadingScene' }); }
 
   preload() {
-    const W = this.scale.width;
-    const H = this.scale.height;
+    const W = this.scale.width, H = this.scale.height;
+    this.cameras.main.setBackgroundColor('#04020a');
 
-    // Dark background
-    this.add.rectangle(W / 2, H / 2, W, H, 0x04020a);
+    // Dark atmosphere
+    this.add.rectangle(W/2, H/2, W, H, 0x04020a);
 
-    // Title text
-    this.add.text(W / 2, H / 2 - 80, 'VEILED APOSTASY', {
-      fontSize: '42px', color: '#cc44ff', fontStyle: 'bold',
-      stroke: '#440066', strokeThickness: 4,
+    // Title
+    this.add.text(W/2, H/2-100, 'VEILED APOSTASY', {
+      fontSize:'52px', color:'#cc44ff', fontStyle:'bold',
+      stroke:'#330044', strokeThickness:6,
+    }).setOrigin(0.5);
+    this.add.text(W/2, H/2-44, 'A Dark Fantasy of Corruption & Consequence', {
+      fontSize:'18px', color:'#9966bb', fontStyle:'italic',
     }).setOrigin(0.5);
 
-    this.add.text(W / 2, H / 2 - 30, 'A Dark Fantasy', {
-      fontSize: '18px', color: '#aa88cc',
-    }).setOrigin(0.5);
+    // Progress bar
+    const bx = W/2, by = H/2+50;
+    this.add.rectangle(bx, by, 620, 30, 0x0c0520, 1).setStrokeStyle(2, 0x6600cc, 0.7);
+    this._barFill = this.add.rectangle(bx-306, by, 2, 26, 0xcc00ff, 1).setOrigin(0, 0.5);
+    this._pctTxt  = this.add.text(bx, by+24, '0%', { fontSize:'13px', color:'#aa66cc' }).setOrigin(0.5);
+    this._fileTxt = this.add.text(bx, by+44, 'Loading…', { fontSize:'12px', color:'#664488' }).setOrigin(0.5);
 
-    // Progress bar frame
-    const barX = W / 2 - 300;
-    const barY = H / 2 + 60;
-    this.add.rectangle(barX + 300, barY, 606, 28, 0x1a0830, 1).setOrigin(0.5);
-    this.add.rectangle(barX + 300, barY, 600, 22, 0x0a0518, 1).setOrigin(0.5).setStrokeStyle(2, 0x7700cc, 0.7);
-    this.barFill = this.add.rectangle(barX, barY, 0, 22, 0xbb00ff, 1).setOrigin(0, 0.5);
-    this.pctText = this.add.text(W / 2, barY + 26, '0%', { fontSize: '13px', color: '#cc88ff' }).setOrigin(0.5);
-    this.statusText = this.add.text(W / 2, barY + 46, 'Initialising...', { fontSize: '13px', color: '#886699' }).setOrigin(0.5);
+    // Load ALL Shaia + Skeleton individual frames
+    ALL_ASSET_PATHS.forEach(p => this.load.image(K(p), ASSET_ROOT + p));
 
-    // Load all image assets
-    loadManifest(this);
+    // Extra props / backgrounds
+    EXTRA_PATHS.forEach(p => {
+      const key = K(p);
+      const url = ASSET_ROOT + p;
+      this.load.image(key, url);
+    });
+
+    // Attempt to load external assets if they were placed by user
+    // (silently skips missing files via loaderror event)
+    const EXT_ENEMIES = [
+      { key:'bg-cave',      url:'assets/backgrounds/cave/bg.png'       },
+      { key:'bg-forest',    url:'assets/backgrounds/forest/bg.png'     },
+      { key:'bg-corridor',  url:'assets/backgrounds/corridor/bg.png'   },
+      { key:'enemy-minotaur', url:'assets/enemies/minotaur/idle.png'   },
+      { key:'enemy-goblin',   url:'assets/enemies/goblin/idle.png'     },
+      { key:'enemy-gorgon',   url:'assets/enemies/gorgon/idle.png'     },
+      { key:'enemy-vampire',  url:'assets/enemies/vampire/idle.png'    },
+      { key:'enemy-knight',   url:'assets/enemies/knight/idle.png'     },
+      { key:'enemy-wizard',   url:'assets/enemies/wizard/idle.png'     },
+    ];
+    EXT_ENEMIES.forEach(e => this.load.image(e.key, e.url));
 
     this.load.on('progress', pct => {
-      this.barFill.displayWidth = 600 * pct;
-      this.pctText.setText(Math.round(pct * 100) + '%');
+      this._barFill.displayWidth = 612 * pct;
+      this._pctTxt.setText(Math.round(pct*100) + '%');
     });
-    this.load.on('fileprogress', file => {
-      this.statusText.setText(file.key);
-    });
-    this.load.on('loaderror', file => {
-      console.warn('Asset failed to load:', file.key, file.src);
-    });
+    this.load.on('fileprogress', file => this._fileTxt.setText(file.key));
+    this.load.on('loaderror', () => { /* silently ignore missing optional assets */ });
   }
 
   create() {
-    // Register sprite animations
-    registerAnimations(this.game);
-
-    // Generate procedural enemy & prop textures
+    // Generate all procedural textures for enemies/props that have no sprite sheet yet
     generateProceduralTextures(this);
 
-    // Subtle corruption particle effect while loading
-    this._addParticles();
+    // Floating corruption motes
+    for (let i = 0; i < 22; i++) {
+      this.time.delayedCall(i*80, () => this._mote());
+    }
 
-    // Delayed start to let particles show briefly
-    this.time.delayedCall(400, () => {
-      this.cameras.main.fade(600, 4, 2, 10, false, (cam, progress) => {
-        if (progress >= 1) this.scene.start('TitleScene');
+    this.time.delayedCall(500, () => {
+      this.cameras.main.fade(500, 4, 2, 10, false, (cam, p) => {
+        if (p >= 1) this.scene.start('TitleScene');
       });
     });
   }
 
-  _addParticles() {
-    const W = this.scale.width;
-    const H = this.scale.height;
-    for (let i = 0; i < 18; i++) {
-      const x = Phaser.Math.Between(0, W);
-      const y = Phaser.Math.Between(0, H);
-      const size = Phaser.Math.Between(2, 6);
-      const alpha = Phaser.Math.FloatBetween(0.1, 0.4);
-      const p = this.add.circle(x, y, size, 0x8800ff, alpha);
-      this.tweens.add({
-        targets: p,
-        y: y - Phaser.Math.Between(40, 120),
-        alpha: 0,
-        duration: Phaser.Math.Between(1200, 2800),
-        ease: 'Quad.easeOut',
-        delay: Phaser.Math.Between(0, 600),
-      });
-    }
+  _mote() {
+    const W = this.scale.width, H = this.scale.height;
+    const x = Phaser.Math.Between(0, W), y = Phaser.Math.Between(H*0.4, H);
+    const c = this.add.circle(x, y, Phaser.Math.Between(2,6),
+      Phaser.Math.RND.pick([0x8800ff,0xcc44ff,0x440088,0xff44aa]), Phaser.Math.FloatBetween(0.1,0.4));
+    this.tweens.add({ targets:c, y:y-Phaser.Math.Between(60,200), x:x+Phaser.Math.Between(-50,50),
+      alpha:0, duration:Phaser.Math.Between(1500,3500), ease:'Quad.easeOut', onComplete:()=>c.destroy() });
   }
 }
