@@ -6,16 +6,17 @@ import { DialogueScene }  from './dialogue.js';
 import { StatusScene }    from './status.js';
 import { InventoryScene } from './inventory.js';
 import { SettingsScene }  from './settings.js';
+import { VictoryScene }   from './victory.js';
 
 const config = {
   type: Phaser.AUTO,
   parent: 'game',
-  backgroundColor: '#06030a',
+  backgroundColor: '#04020a',
   pixelArt: false,
   roundPixels: true,
   physics: {
     default: 'arcade',
-    arcade: { gravity: { y: 980 }, debug: false },
+    arcade: { gravity:{ y:980 }, debug:false },
   },
   scale: {
     mode: Phaser.Scale.FIT,
@@ -32,6 +33,7 @@ const config = {
     StatusScene,
     InventoryScene,
     SettingsScene,
+    VictoryScene,
   ],
 };
 

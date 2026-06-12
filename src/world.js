@@ -1,6 +1,6 @@
 import {
   normalizeState, saveState, clamp,
-  FramePlayer, K, FRAMES, makeVirtualControls,
+  FramePlayer, EnemyAnimator, K, FRAMES, makeVirtualControls,
   makeMeter, corruptionTier, intactCount, totalClothingDef,
   generateProceduralTextures,
 } from './util.js';
@@ -97,6 +97,9 @@ export class WorldScene extends Phaser.Scene {
     for (let bx=0; bx<WORLD_W; bx+=200) {
       gnd.lineStyle(1, 0x1e0840, 0.4); gnd.lineBetween(bx, GROUND_Y, bx, 720);
     }
+
+    // Corruption world overlay (updates each frame)
+    this._corrWorldOverlay = this.add.rectangle(WORLD_W/2, 360, WORLD_W, 720, 0xaa0033, 0).setDepth(49);
 
     // Zone labels
     [
@@ -201,42 +204,89 @@ export class WorldScene extends Phaser.Scene {
 
   // ─── NPCs ────────────────────────────────────────────────────────────────
   _createNPCs() {
-    this._npcs = [
-      { key:'elder',    x:600,  label:'Elder Thane',   color:'#ccaaff', skey:'npc-elder'    },
-      { key:'merchant', x:1100, label:'Merchant Ida',  color:'#ffcc88', skey:'npc-merchant' },
-      { key:'guard',    x:2300, label:'Capt. Serrin',  color:'#88aacc', skey:'npc-guard'    },
-      { key:'witch',    x:5500, label:'Witch Moira',   color:'#cc88ff', skey:'npc-witch'    },
-    ].map(d => {
-      const spr = this.add.image(d.x, GROUND_Y-52, d.skey).setOrigin(0.5,1).setScale(0.9).setDepth(90);
-      const lbl = this.add.text(d.x, GROUND_Y-118, d.label, {
-        fontSize:'13px', color:d.color, fontStyle:'bold', backgroundColor:'#00000077', padding:{x:5,y:2},
+    // skey = initial texture key, animKey = sprite-sheet animation to play
+    const defs = [
+      { key:'elder',    x:600,  label:'Elder Thane',   color:'#ccaaff', skey:'npc-elder',      animKey:null           },
+      { key:'merchant', x:1100, label:'Merchant Ida',  color:'#ffcc88', skey:'npc-merchant-s', animKey:'merchant-idle'},
+      { key:'guard',    x:2300, label:'Capt. Serrin',  color:'#88aacc', skey:'npc-guard-s',    animKey:'guard-idle'   },
+      { key:'witch',    x:5500, label:'Witch Moira',   color:'#cc88ff', skey:'npc-witch-s',    animKey:'witch-idle'   },
+    ];
+
+    this._npcs = defs.map(d => {
+      // Use sprite (not image) so anims.play() works
+      const tex = this.textures.exists(d.skey) ? d.skey : 'npc-elder';
+      const spr = this.add.sprite(d.x, GROUND_Y-54, tex).setOrigin(0.5,1).setScale(0.92).setDepth(90);
+
+      // Play sprite-sheet animation if registered
+      if (d.animKey && this.anims.exists(d.animKey)) {
+        spr.anims.play(d.animKey, true);
+      } else if (!d.animKey) {
+        // Procedural: gentle bob tween
+        this.tweens.add({ targets:spr, y:spr.y-5, yoyo:true, repeat:-1,
+          duration:1600+Math.random()*400, ease:'Sine.easeInOut' });
+      }
+
+      const lbl = this.add.text(d.x, GROUND_Y-120, d.label, {
+        fontSize:'13px', color:d.color, fontStyle:'bold',
+        backgroundColor:'#00000077', padding:{x:5,y:2},
       }).setOrigin(0.5);
-      const ekey = this.add.text(d.x, GROUND_Y-98, '[E]', { fontSize:'12px', color:'#ffffff88' }).setOrigin(0.5);
-      this.tweens.add({ targets:spr, y:spr.y-5, yoyo:true, repeat:-1, duration:1600+Math.random()*400, ease:'Sine.easeInOut' });
+      const ekey = this.add.text(d.x, GROUND_Y-100, '[E]', {
+        fontSize:'12px', color:'#ffffff88',
+      }).setOrigin(0.5);
+
       return { ...d, spr, lbl, ekey };
     });
   }
 
   // ─── PATROLS ─────────────────────────────────────────────────────────────
   _createPatrols() {
-    const skKey = this.textures.exists(K(FRAMES.SK_IDLE[0])) ? K(FRAMES.SK_IDLE[0]) : 'enemy-guard';
-    this._patrols = [
-      { x:2800, min:2550, max:3100, enc:ENCOUNTERS.possessedGuard },
-      { x:3600, min:3300, max:3900, enc:ENCOUNTERS.cultistSeducer  },
-      { x:4400, min:4100, max:4700, enc:ENCOUNTERS.shadowBeast     },
-      { x:5000, min:4800, max:5300, enc:ENCOUNTERS.undeadMinion    },
-    ].map(d => {
-      const usesk = d.enc.useSkeleton && this.textures.exists(skKey);
-      const tex   = usesk ? skKey : (this.textures.exists(d.enc.spriteKey||'enemy-guard') ? (d.enc.spriteKey||'enemy-guard') : 'enemy-guard');
-      const spr   = this.add.sprite(d.x, GROUND_Y-52, tex).setScale(0.86).setOrigin(0.5,1).setDepth(88);
-      const fp    = new FramePlayer(this, spr);
-      if (usesk) fp.loop(FRAMES.SK_WALK, 10);
-      const lbl   = this.add.text(d.x, GROUND_Y-108, d.enc.label, {
-        fontSize:'12px', color:'#ffcccc', backgroundColor:'#00000077', padding:{x:4,y:2},
+    const skKey = this.textures.exists(K(FRAMES.SK_IDLE[0])) ? K(FRAMES.SK_IDLE[0]) : 'npc-elder';
+
+    const patrolDefs = [
+      { x:2800, min:2550, max:3150, enc:ENCOUNTERS.goblin,        color:0xaacc44 },
+      { x:3600, min:3250, max:3950, enc:ENCOUNTERS.minotaur,      color:0xcc4422 },
+      { x:4400, min:4050, max:4750, enc:ENCOUNTERS.vampire,       color:0xcc22cc },
+      { x:5000, min:4750, max:5350, enc:ENCOUNTERS.possessedGuard,color:0x4422cc },
+    ];
+
+    this._patrols = patrolDefs.map(d => {
+      const enc = d.enc;
+
+      // Resolve initial texture
+      let tex;
+      if (enc.useSkeleton) {
+        tex = skKey;
+      } else if (enc.spriteKey && this.textures.exists(enc.spriteKey)) {
+        tex = enc.spriteKey;
+      } else {
+        tex = skKey;
+      }
+
+      const sc  = (enc.scale || 1.0) * 0.78; // slightly smaller in world vs battle
+      const spr = this.add.sprite(d.x, GROUND_Y-54, tex)
+        .setScale(sc).setOrigin(0.5, 1).setDepth(88);
+
+      // Build frame sets mirroring battle.js _buildEnemySets
+      let sets;
+      if (enc.useSkeleton) {
+        sets = { idle:FRAMES.SK_IDLE, walk:FRAMES.SK_WALK, atk:FRAMES.SK_ATK, hurt:FRAMES.SK_HURT };
+      } else {
+        sets = {
+          idle: enc.spriteKey ? [enc.spriteKey] : FRAMES.SK_IDLE,
+          walk: enc.spriteKey ? [enc.spriteKey] : FRAMES.SK_WALK,
+        };
+      }
+      const ea = new EnemyAnimator(this, spr, enc.animPrefix, sets);
+      ea.idle();   // start in idle, switch to walk in update
+
+      const lbl = this.add.text(d.x, GROUND_Y-112, enc.label, {
+        fontSize:'12px', color:'#ffcccc',
+        backgroundColor:'#00000077', padding:{x:4,y:2},
       }).setOrigin(0.5);
-      // Red threat indicator arrow
-      const arrow = this.add.triangle(d.x, GROUND_Y-120, -10,0, 10,0, 0,-14, 0xdd2222, 0.85).setDepth(89);
-      return { ...d, spr, fp, lbl, arrow, dir:1, speed:44+Math.random()*18, alive:true };
+
+      const arrow = this.add.triangle(d.x, GROUND_Y-124, -10,0, 10,0, 0,-14, d.color, 0.85).setDepth(89);
+
+      return { ...d, spr, ea, lbl, arrow, dir:1, speed:44+Math.random()*18, alive:true, moving:false };
     });
   }
 
@@ -320,9 +370,21 @@ export class WorldScene extends Phaser.Scene {
     const tStr    = stripped > 0 ? ` | ⚠${stripped} stripped` : '';
     this._dayTxt.setText(`Day ${s.day}  ·  ${tier.label}${tStr}  ·  ${s.gold}g  ·  ${s.kills} kills`);
     this._objTxt.setText(s.objective);
-    const px = this.player?.x || 0;
-    const zone = px < 2400 ? 'SANCTUARY HALL' : px < 5600 ? 'CATACOMBS' : 'INNER SANCTUM';
+    const px2 = this.player?.x || 0;
+    const zone = px2 < 2400 ? 'SANCTUARY HALL' : px2 < 5600 ? 'CATACOMBS' : 'INNER SANCTUM';
     this._zoneTxt.setText(zone);
+
+    // Corruption world tint — intensifies as corruption rises
+    if (this._corrWorldOverlay) {
+      const corrAlpha = (s.corruption / 100) * 0.16;
+      this._corrWorldOverlay.setAlpha(corrAlpha);
+    }
+
+    // Stripped-in-public flag — if clothing is visibly stripped while in the sanctuary
+    if (!s.flags.strippedPublic && px2 < 2400 && Object.values(s.clothing).filter(c => c.stripped).length >= 2) {
+      s.flags.strippedPublic = true;
+      saveState(s);
+    }
   }
 
   // ─── UPDATE ──────────────────────────────────────────────────────────────
@@ -367,6 +429,9 @@ export class WorldScene extends Phaser.Scene {
     if (this._eventCD > 0) this._eventCD -= delta;
     else if (Math.random() < 0.0003) this._randomEvent();
 
+    // Boss trigger zone (Inner Sanctum, deep area)
+    this._checkBossTrigger();
+
     this._refreshHUD();
   }
 
@@ -390,16 +455,30 @@ export class WorldScene extends Phaser.Scene {
     this._patrols.forEach(p => {
       if (!p.alive) return;
       p.spr.x += p.dir * p.speed * dt;
-      p.lbl.x = p.spr.x; p.arrow.x = p.spr.x;
+      p.lbl.x   = p.spr.x;
+      p.arrow.x  = p.spr.x;
+
+      // Flip + switch anim on turn
       if (p.spr.x >= p.max || p.spr.x <= p.min) {
         p.dir *= -1;
         p.spr.setFlipX(p.dir < 0);
       }
+
+      // Toggle walk / idle based on speed
+      const isMoving = Math.abs(p.dir) > 0;
+      if (isMoving !== p.moving) {
+        p.moving = isMoving;
+        if (isMoving) p.ea.walk();
+        else          p.ea.idle();
+      }
+
       // Player contact → battle
-      if (Math.abs(p.spr.x - this.player.x) < 55 && Math.abs(p.spr.y - this.player.y) < 90) {
+      if (Math.abs(p.spr.x - this.player.x) < 58 && Math.abs(p.spr.y - this.player.y) < 94) {
         p.alive = false;
-        p.spr.setAlpha(0.25); p.lbl.setAlpha(0.25); p.arrow.setAlpha(0.25);
-        p.fp.stop();
+        p.spr.setAlpha(0.22);
+        p.lbl.setAlpha(0.22);
+        p.arrow.setAlpha(0.22);
+        p.ea.stop();
         this._startBattle(p.enc);
       }
     });
@@ -544,13 +623,100 @@ export class WorldScene extends Phaser.Scene {
   _onBattleReturn(data) {
     this._paused = false;
     if (data.outcome === 'defeat') {
-      this.player.x = 220; this.player.y = GROUND_Y-80;
+      this.player.x = 220;
+      this.player.y = GROUND_Y - 80;
       this.cameras.main.fadeIn(500, 4, 2, 10);
     }
     if (data.outcome === 'victory' && data.encounterId) {
-      // Revive patrol in place but dead (already set alive=false when combat started)
+      // Patrol already marked alive=false on contact; nothing more needed
+      saveState(this.state);
     }
     this._applyCorruptionTint();
+    this._refreshHUD();
+  }
+
+  // ─── BOSS TRIGGER ─────────────────────────────────────────────────────────
+  _checkBossTrigger() {
+    if (this._paused || this._bossTriggered) return;
+    const px = this.player?.x || 0;
+    const s  = this.state;
+    // Boss zone: deep Inner Sanctum
+    if (px >= 6700 && (s.questStage >= 2 || s.flags.sanctumOpen || s.npcs.guard.bribed)) {
+      if (!s.flags.patronDefeated) {
+        this._bossTriggered = true;
+        this._showBossWarning();
+      }
+    }
+  }
+
+  _showBossWarning() {
+    const W = this.scale.width, H = this.scale.height;
+    this._paused = true;
+    // Dramatic red flash
+    const flash = this.add.rectangle(W/2, H/2, W, H, 0xaa0022, 0).setScrollFactor(0).setDepth(8000);
+    this.tweens.add({ targets:flash, alpha:{ from:0, to:0.5 }, duration:400, yoyo:true });
+
+    const c = this.add.container(W/2, H/2).setScrollFactor(0).setDepth(8001);
+    const bg  = this.add.rectangle(0,0, 760,320, 0x06010c, 0.98).setStrokeStyle(3, 0xff0044, 0.9);
+    const t1  = this.add.text(0,-116,'THE PATRON STIRS',{fontSize:'40px',color:'#ff2244',fontStyle:'bold',stroke:'#220000',strokeThickness:5}).setOrigin(0.5);
+    const t2  = this.add.text(0,-28,[
+      'You have reached the Inner Sanctum's heart.',
+      'The Patron senses your approach — and your corruption.',
+      '',
+      'Ensure your willpower is strong and your inventory is prepared.',
+      'Holy Water weakens it significantly.',
+      '',
+      this.state.flags.witchPact ? 'The pact with Moira will serve you here.' : 'If Witch Moira offered a pact, consider returning to her first.',
+    ].join('
+'), {fontSize:'15px',color:'#ccbbdd',align:'center',wordWrap:{width:700},lineSpacing:4}).setOrigin(0.5);
+
+    const fight = this.add.rectangle(-110,128, 200,56, 0x2a0000, 0.92).setStrokeStyle(2,0xff2244,0.85);
+    const fTxt  = this.add.text(-110,128,'FACE IT',{fontSize:'20px',color:'#fff',fontStyle:'bold'}).setOrigin(0.5);
+    const back  = this.add.rectangle(110,128, 200,56, 0x0a001a, 0.92).setStrokeStyle(2,0x7733cc,0.8);
+    const bTxt  = this.add.text(110,128,'RETREAT',{fontSize:'20px',color:'#cc88ff',fontStyle:'bold'}).setOrigin(0.5);
+    c.add([bg,t1,t2,fight,fTxt,back,bTxt]);
+
+    fight.setInteractive({useHandCursor:true});
+    fight.on('pointerdown',()=>{
+      c.destroy(); flash.destroy();
+      this._startBattle(ENCOUNTERS.patronBoss || this._getPatronEncounter());
+    });
+    back.setInteractive({useHandCursor:true});
+    back.on('pointerdown',()=>{
+      c.destroy(); flash.destroy();
+      this._bossTriggered = false;
+      this._paused = false;
+      // Push player back slightly
+      this.player.x = 6500;
+    });
+
+    // Keyboard
+    const kb = this.input.keyboard.once('keydown-ENTER', ()=>{
+      if (!c.active) return;
+      c.destroy(); flash.destroy();
+      this._startBattle(this._getPatronEncounter());
+    });
+    this.input.keyboard.once('keydown-ESC', ()=>{
+      if (!c.active) return;
+      c.destroy(); flash.destroy();
+      this._bossTriggered = false;
+      this._paused = false;
+      this.player.x = 6500;
+    });
+  }
+
+  _getPatronEncounter() {
+    // Import inline to avoid circular dependency issues
+    return {
+      id:'patronBoss', label:'The Patron',
+      spriteKey:'enemy-patron', useSkeleton:false, spriteFamily:null,
+      hp:200, maxHp:200, atk:22, def:10, isBoss:true,
+      corruptionOnDefeat:15, stripsOnDefeat:true,
+      reward:{ gold:120, hp:20, sta:20, wil:20, pressureDrop:40, item:'holyWater', corruptionDrop:12 },
+      intents:['heavyStrike','arouse','heavyStrip','bind','voidPulse','heavyStrike','guard','voidPulse'],
+      stripChance:0.62, arousalAttack:true, bindAttack:true,
+      lore:'The architect of the sanctuary's fall. It does not hate you. It simply wants — your will, your flesh, your becoming.',
+    };
   }
 
   // ─── PROLOGUE ─────────────────────────────────────────────────────────────

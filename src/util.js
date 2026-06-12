@@ -86,7 +86,12 @@ export class FramePlayer {
   // Loop – calls onLoop each cycle; stops when stop() called
   loop(paths, fps = 10) {
     this.stop();
-    const keys = paths.map(p => K(p)).filter(k => this._scene.textures.exists(k));
+    if (!paths || !paths.length) return;
+    // paths may already be texture keys (not raw paths) when called with [resolvedKey]
+    const keys = paths.map(p => {
+      const k = K(p);
+      return this._scene.textures.exists(k) ? k : (this._scene.textures.exists(p) ? p : null);
+    }).filter(Boolean);
     if (!keys.length) return;
     this._sprite.setTexture(keys[0]);
     let idx = 0;
@@ -573,4 +578,122 @@ export function generateProceduralTextures(scene) {
     g.lineStyle(2,0xffcc44,0.7); g.strokeRect(4,4,64,50);
     g.fillStyle(0xffcc44,0.9); g.fillCircle(36,30,8);
   });
+}
+
+// ─── ENEMY ANIMATOR ────────────────────────────────────────────────────────
+// Unified interface for both sprite-sheet enemies (Phaser anims) and
+// individual-PNG enemies (FramePlayer). Battle + World use this consistently.
+export class EnemyAnimator {
+  // customSets: { idle:[keys], walk:[keys], atk:[keys], hurt:[keys], dead:[keys] }
+  // Pass FRAMES.SK_* arrays for skeleton, or [singleTexKey] for static sprites.
+  constructor(scene, sprite, animPrefix, customSets = null) {
+    this._scene   = scene;
+    this._sprite  = sprite;
+    this._prefix  = animPrefix || '';
+    this._hasSS   = !!animPrefix && animPrefix !== 'skeleton'
+                    && scene.anims.exists(`${animPrefix}-idle`);
+    this._fp      = new FramePlayer(scene, sprite);
+    this._sets    = customSets || {};  // fallback frame arrays per action
+  }
+
+  idle()           { this._loop('idle', 8);  }
+  walk()           { this._loop('walk', 10); }
+  block()          { this._loop('idle', 6);  }
+  attack(onDone)   { this._once('atk',  14, onDone); }
+  hurt(onDone)     { this._once('hurt', 10, onDone); }
+  dead(onDone)     { this._once('dead',  8, onDone); }
+
+  _loop(suffix, fps) {
+    const key = `${this._prefix}-${suffix}`;
+    if (this._hasSS && this._scene.anims.exists(key)) {
+      this._fp.stop();
+      if (this._sprite.anims?.currentAnim?.key !== key)
+        this._sprite.anims.play(key, true);
+    } else {
+      if (this._sprite.anims) this._sprite.anims.stop();
+      const frames = this._sets[suffix] || this._sets['idle'] || FRAMES.SK_IDLE;
+      this._fp.loop(frames, fps);
+    }
+  }
+
+  _once(suffix, fps, onDone) {
+    const key = `${this._prefix}-${suffix}`;
+    if (this._hasSS && this._scene.anims.exists(key)) {
+      this._fp.stop();
+      this._sprite.anims.play(key, true);
+      this._sprite.once('animationcomplete', () => { if (onDone) onDone(); });
+    } else {
+      if (this._sprite.anims) this._sprite.anims.stop();
+      const frames = this._sets[suffix] || this._sets['idle'] || FRAMES.SK_ATK;
+      this._fp.once(frames, fps, onDone);
+    }
+  }
+
+  stop() {
+    this._fp.stop();
+    if (this._sprite.anims) this._sprite.anims.stop();
+  }
+}
+
+// ─── REGISTER ENEMY SPRITE SHEET ANIMATIONS ───────────────────────────────
+export function registerEnemyAnims(scene) {
+  const mk = (key, sheetKey, start, end, rate, repeat) => {
+    if (scene.anims.exists(key)) return;
+    if (!scene.textures.exists(sheetKey)) return;
+    scene.anims.create({
+      key,
+      frames: scene.anims.generateFrameNumbers(sheetKey, { start, end }),
+      frameRate: rate,
+      repeat,
+    });
+  };
+
+  // ── Minotaur ────────────────────────────────────────────────────────
+  mk('minotaur-idle', 'en-minotaur-idle',  0, 9,   8, -1);
+  mk('minotaur-walk', 'en-minotaur-walk',  0, 11,  10, -1);
+  mk('minotaur-atk',  'en-minotaur-atk',   0, 4,   12, 0);
+  mk('minotaur-hurt', 'en-minotaur-hurt',  0, 2,   10, 0);
+  mk('minotaur-dead', 'en-minotaur-dead',  0, 4,   8,  0);
+
+  // ── Vampire ────────────────────────────────────────────────────────
+  mk('vampire-idle',  'en-vampire-idle',   0, 4,   8,  -1);
+  mk('vampire-walk',  'en-vampire-walk',   0, 7,   10, -1);
+  mk('vampire-run',   'en-vampire-run',    0, 5,   14, -1);
+  mk('vampire-atk',   'en-vampire-atk1',   0, 4,   14, 0);
+  mk('vampire-atk2',  'en-vampire-atk2',   0, 2,   12, 0);
+  mk('vampire-hurt',  'en-vampire-hurt',   0, 0,   6,  0);
+  mk('vampire-block', 'en-vampire-block',  0, 1,   8,  -1);
+
+  // ── Golem (boss) ───────────────────────────────────────────────────
+  mk('golem-idle', 'en-golem-idle',  0, 4,   8,  -1);
+  mk('golem-walk', 'en-golem-walk',  0, 23,  12, -1);
+  mk('golem-atk',  'en-golem-atk',   0, 50,  16, 0);
+  mk('golem-atkb', 'en-golem-atkb',  0, 56,  16, 0);
+  mk('golem-hurt', 'en-golem-hurt',  0, 11,  12, 0);
+  mk('golem-heal', 'en-golem-heal',  0, 74,  10, 0);
+
+  // ── Boss Minotaur (288×160 per frame) ──────────────────────────────
+  mk('boss-minotaur-idle', 'en-boss-minotaur', 0, 3,  8, -1);
+  mk('boss-minotaur-walk', 'en-boss-minotaur', 4, 7,  10, -1);
+  mk('boss-minotaur-atk',  'en-boss-minotaur', 8, 15, 14, 0);
+  mk('boss-minotaur-hurt', 'en-boss-minotaur', 16,19, 10, 0);
+
+  // ── Merchant ───────────────────────────────────────────────────────
+  mk('merchant-idle',  'npc-merchant-s',    0, 5,   6,  -1);
+  mk('merchant-idle2', 'npc-merchant-s2',   0, 10,  8,  -1);
+  mk('merchant-talk',  'npc-merchant-talk', 0, 15,  10, -1);
+
+  // ── Witch / Mage ───────────────────────────────────────────────────
+  mk('witch-idle', 'npc-witch-s',    0, 7,  8,  -1);
+  mk('witch-atk',  'npc-witch-atk',  0, 6,  12, 0);
+  mk('witch-walk', 'npc-witch-walk', 0, 6,  10, -1);
+  mk('witch-hurt', 'npc-witch-hurt', 0, 3,  10, 0);
+
+  // ── Town guard (gray) ──────────────────────────────────────────────
+  mk('guard-idle', 'npc-guard-s',    0, 6,  7,  -1);
+  mk('guard-walk', 'npc-guard-walk', 0, 7,  9,  -1);
+
+  // ── Town cultist (red) ─────────────────────────────────────────────
+  mk('cult-idle', 'npc-cult-s',    0, 5,  7,  -1);
+  mk('cult-walk', 'npc-cult-walk', 0, 7,  9,  -1);
 }
