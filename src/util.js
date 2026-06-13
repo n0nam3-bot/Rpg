@@ -227,6 +227,16 @@ export function freshState() {
       sanctumOpen:false, witchPact:false, betrayedOrder:false,
       cultInitiate:false, strippedPublic:false, elderReveal:false,
     },
+    // ── Harassment / escalation tracking ─────────────────────────────
+    harassment: {
+      knightAggression: 0,   // 0-100; high = knight harder + hostile
+      lethalCount:      0,   // total kills of townspeople
+      chains: {
+        patronA: { encounters:0, friendsAlerted:0, active:true  },
+        patronB: { encounters:0, friendsAlerted:0, active:true  },
+        patronC: { encounters:0, friendsAlerted:0, active:true  },
+      },
+    },
     questStage: 0,
     objective: 'Find Elder Thane in the Sanctuary Hall.',
     settings: { shake:true, music:true, mobileControls:true },

@@ -23,20 +23,26 @@ const config = {
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: 1280,
     height: 720,
+    min: { width: 480, height: 270 },
+    max: { width: 1920, height: 1080 },
+    expandParent: true,
   },
+  dom: { createContainer: false },
   scene: [
-    LoadingScene,
-    TitleScene,
-    WorldScene,
-    BattleScene,
-    DialogueScene,
-    StatusScene,
-    InventoryScene,
-    SettingsScene,
-    VictoryScene,
+    LoadingScene, TitleScene, WorldScene, BattleScene,
+    DialogueScene, StatusScene, InventoryScene, SettingsScene, VictoryScene,
   ],
 };
 
 window.addEventListener('load', () => {
   window.__veiledGame = new Phaser.Game(config);
 });
+
+// Force rescale on orientation change and resize
+const rescale = () => {
+  if (!window.__veiledGame) return;
+  window.__veiledGame.scale.refresh();
+};
+window.addEventListener('resize', rescale);
+window.addEventListener('orientationchange', () => setTimeout(rescale, 200));
+screen.orientation?.addEventListener?.('change', () => setTimeout(rescale, 200));
