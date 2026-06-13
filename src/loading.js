@@ -45,25 +45,6 @@ const SPRITE_SHEETS = [
   ['neutral/town/gray/Walk.png', 'npc-guard-walk', 128, 128],
   ['neutral/town/red/Idle.png',  'npc-cult-s',     128, 128],
   ['neutral/town/red/Walk.png',  'npc-cult-walk',  128, 128],
-
-  // ── Visual aliases used by the rebuilt world/dialogue flow ──
-  ['neutral/mage/Idle.png',      'npc-mage-idle',     128, 128],
-  ['neutral/mage/Attack_1.png',  'npc-mage-atk',      128, 128],
-  ['neutral/mage/Walk.png',      'npc-mage-walk',     128, 128],
-  ['neutral/mage/Run.png',       'npc-mage-run',      128, 128],
-  ['merchant/Idle.png',          'npc-merchant-idle', 128, 128],
-  ['merchant/Idle_2.png',        'npc-merchant-idle2',128, 128],
-  ['merchant/Dialogue.png',      'npc-merchant-talk2',128, 128],
-  ['neutral/town/gray/Idle.png', 'npc-town-gray-idle',128, 128],
-  ['neutral/town/gray/Walk.png', 'npc-town-gray-walk',128, 128],
-  ['neutral/town/red/Idle.png',  'npc-town-red-idle', 128, 128],
-  ['neutral/town/red/Walk.png',  'npc-town-red-walk', 128, 128],
-  // ── Knight (guard NPC / enemy) ──
-  ['neutral/knight/Idle.png',    'npc-knight-idle', 256, 256],
-  ['neutral/knight/Run.png',     'npc-knight-run',  256, 256],
-  ['neutral/knight/Hurt.png',    'npc-knight-hurt', 256, 128],
-  ['neutral/knight/Attacks.png', 'npc-knight-atk',  256, 320],
-  ['neutral/knight/Death.png',   'npc-knight-dead', 256, 128],
 ];
 
 // ─── SINGLE IMAGES (large sprites / no clean frame grid) ────────────────────
@@ -85,6 +66,12 @@ const SINGLE_IMAGES = [
   ['enemies/bosses/goblin/attack1.png', 'en-bgoblin-atk'],
   ['enemies/bosses/goblin/walk1.png',   'en-bgoblin-walk'],
   ['enemies/bosses/goblin/die.png',     'en-bgoblin-die'],
+  // ── Knight (guard NPC / enemy) ──
+  ['neutral/knight/Idle.png',    'npc-knight-idle'],
+  ['neutral/knight/Run.png',     'npc-knight-run'],
+  ['neutral/knight/Hurt.png',    'npc-knight-hurt'],
+  ['neutral/knight/Attacks.png', 'npc-knight-atk'],
+  ['neutral/knight/Death.png',   'npc-knight-dead'],
   // ── Merchant approval ──
   ['merchant/Approval.png',      'npc-merchant-ok'],
 ];
@@ -137,7 +124,6 @@ export class LoadingScene extends Phaser.Scene {
   create() {
     // Register all Phaser sprite-sheet animations
     registerEnemyAnims(this);
-    this._registerTownAnimations();
 
     // Generate procedural textures for remaining enemies/props
     generateProceduralTextures(this);
@@ -149,35 +135,6 @@ export class LoadingScene extends Phaser.Scene {
         if (p >= 1) this.scene.start('TitleScene');
       });
     });
-  }
-
-  _registerTownAnimations() {
-    const mk = (key, sheetKey, start, end, rate, repeat=-1) => {
-      if (this.anims.exists(key)) return;
-      if (!this.textures.exists(sheetKey)) return;
-      this.anims.create({
-        key,
-        frames: this.anims.generateFrameNumbers(sheetKey, { start, end }),
-        frameRate: rate,
-        repeat,
-      });
-    };
-
-    // Mage / town / merchant sprite-sheet aliases
-    mk('mage-idle', 'npc-mage-idle', 0, 7, 8, -1);
-    mk('mage-walk', 'npc-mage-walk', 0, 6, 10, -1);
-    mk('mage-run',  'npc-mage-run',  0, 7, 12, -1);
-    mk('mage-atk',  'npc-mage-atk',  0, 6, 12, 0);
-
-    mk('merchant-idle',    'npc-merchant-idle',    0, 5, 7, -1);
-    mk('merchant-idle2',   'npc-merchant-idle2',   0, 10, 7, -1);
-    mk('merchant-talk',    'npc-merchant-talk',    0, 15, 10, -1);
-    mk('merchant-talk2',   'npc-merchant-talk2',   0, 15, 10, -1);
-
-    mk('town-gray-idle', 'npc-town-gray-idle', 0, 6, 8, -1);
-    mk('town-gray-walk', 'npc-town-gray-walk', 0, 7, 10, -1);
-    mk('town-red-idle',  'npc-town-red-idle',  0, 5, 8, -1);
-    mk('town-red-walk',  'npc-town-red-walk',  0, 7, 10, -1);
   }
 
   _mote() {

@@ -12,7 +12,11 @@ export class DialogueScene extends Phaser.Scene {
     this._nodeId   = 'start';
     this._choices  = [];
     this._focus    = 0;
-    this._reaction = null;
+    this._reactionActive = false;
+    this._reactionSeq = [];
+    this._reactionIndex = 0;
+    this._reactionLayer = null;
+    this._reactionTimer = null;
   }
 
   create() {
@@ -48,98 +52,24 @@ export class DialogueScene extends Phaser.Scene {
 
     // Keyboard
     this._keys = this.input.keyboard.addKeys('UP,DOWN,LEFT,RIGHT,ENTER,SPACE,ESC,A,D,W,S');
-    this._keys.UP.on('down',    () => this._moveFocus(-1));
-    this._keys.DOWN.on('down',  () => this._moveFocus(1));
-    this._keys.ENTER.on('down', () => this._confirmFocus());
-    this._keys.SPACE.on('down', () => this._confirmFocus());
+    this._keys.UP.on('down',    () => this._reactionActive ? this._reactionInput('UP') : this._moveFocus(-1));
+    this._keys.DOWN.on('down',  () => this._reactionActive ? this._reactionInput('DOWN') : this._moveFocus(1));
+    this._keys.LEFT.on('down',  () => this._reactionActive ? this._reactionInput('LEFT') : this._moveFocus(-1));
+    this._keys.RIGHT.on('down', () => this._reactionActive ? this._reactionInput('RIGHT') : this._moveFocus(1));
+    this._keys.W.on('down',     () => this._reactionActive ? this._reactionInput('UP') : this._moveFocus(-1));
+    this._keys.S.on('down',     () => this._reactionActive ? this._reactionInput('DOWN') : this._moveFocus(1));
+    this._keys.A.on('down',     () => this._reactionActive ? this._reactionInput('LEFT') : this._moveFocus(-1));
+    this._keys.D.on('down',     () => this._reactionActive ? this._reactionInput('RIGHT') : this._moveFocus(1));
+    this._keys.ENTER.on('down', () => this._reactionActive ? this._reactionInput('ENTER') : this._confirmFocus());
+    this._keys.SPACE.on('down', () => this._reactionActive ? this._reactionInput('SPACE') : this._confirmFocus());
     this._keys.ESC.on('down',   () => this._close());
 
     // Number keys 1-5 for direct choice
     const nkeys = this.input.keyboard.addKeys('ONE,TWO,THREE,FOUR,FIVE');
     Object.entries(nkeys).forEach(([k,obj],i) => obj.on('down', ()=>this._selectChoice(i)));
 
-    this._reactionOverlay = this.add.container(W/2, H/2+150).setDepth(7030).setVisible(false);
-    this._reactionOverlay.add(this.add.rectangle(0, 0, 540, 130, 0x06010c, 0.95).setStrokeStyle(2, 0xff44cc, 0.8));
-    this._reactionPrompt = this.add.text(0, -36, '', { fontSize:'18px', color:'#ffccff', fontStyle:'bold' }).setOrigin(0.5);
-    this._reactionPattern = this.add.text(0, -2, '', { fontSize:'26px', color:'#ffffff', fontStyle:'bold' }).setOrigin(0.5);
-    this._reactionStatus = this.add.text(0, 34, '', { fontSize:'14px', color:'#ddbbff' }).setOrigin(0.5);
-    this._reactionOverlay.add([this._reactionPrompt, this._reactionPattern, this._reactionStatus]);
-
     this.cameras.main.fadeIn(200, 4, 2, 10);
     this._renderNode('start');
-  }
-
-  update(time, delta) {
-    if (!this._reaction) return;
-    this._reaction.timeLeft -= delta;
-    const exp = this._reaction.pattern.map(token => token === 'LEFT' ? '←' : token === 'RIGHT' ? '→' : token === 'UP' ? '↑' : token === 'DOWN' ? '↓' : token === 'SPACE' ? '␣' : token).join('  ');
-    this._reactionPattern?.setText(exp);
-    this._reactionStatus?.setText(`Press: ${this._reaction.pattern[this._reaction.index] ? this._tokenToGlyph(this._reaction.pattern[this._reaction.index]) : 'done'}`);
-
-    if (this._reaction.timeLeft <= 0) {
-      this._resolveReaction(false);
-      return;
-    }
-
-    const pressed = this._readReactionToken();
-    if (!pressed) return;
-
-    const expected = this._reaction.pattern[this._reaction.index];
-    if (pressed === expected) {
-      this._reaction.index++;
-      if (this._reaction.index >= this._reaction.pattern.length) {
-        this._resolveReaction(true);
-      } else {
-        this._reactionStatus?.setText(`Good. Next: ${this._tokenToGlyph(this._reaction.pattern[this._reaction.index])}`);
-      }
-    } else {
-      this._resolveReaction(false);
-    }
-  }
-
-  _tokenToGlyph(token) {
-    return token === 'LEFT' ? '←' : token === 'RIGHT' ? '→' : token === 'UP' ? '↑' : token === 'DOWN' ? '↓' : token === 'SPACE' ? '␣' : token;
-  }
-
-  _readReactionToken() {
-    if (Phaser.Input.Keyboard.JustDown(this._keys.LEFT) || Phaser.Input.Keyboard.JustDown(this._keys.A)) return 'LEFT';
-    if (Phaser.Input.Keyboard.JustDown(this._keys.RIGHT) || Phaser.Input.Keyboard.JustDown(this._keys.D)) return 'RIGHT';
-    if (Phaser.Input.Keyboard.JustDown(this._keys.UP) || Phaser.Input.Keyboard.JustDown(this._keys.W)) return 'UP';
-    if (Phaser.Input.Keyboard.JustDown(this._keys.DOWN) || Phaser.Input.Keyboard.JustDown(this._keys.S)) return 'DOWN';
-    if (Phaser.Input.Keyboard.JustDown(this._keys.SPACE) || Phaser.Input.Keyboard.JustDown(this._keys.ENTER)) return 'SPACE';
-    return null;
-  }
-
-  _startReaction(choice) {
-    const reaction = choice.reaction || null;
-    if (!reaction) return;
-    this._reaction = {
-      choice,
-      pattern: Array.isArray(reaction.pattern) ? reaction.pattern.slice() : ['LEFT','RIGHT'],
-      index: 0,
-      timeLeft: reaction.time || 1800,
-      success: reaction.success || null,
-      failure: reaction.failure || null,
-    };
-    this._reactionOverlay?.setVisible(true);
-    this._reactionPrompt?.setText(reaction.prompt || 'React now');
-    this._reactionPattern?.setText(this._reaction.pattern.map(t => this._tokenToGlyph(t)).join('  '));
-    this._reactionStatus?.setText('Press the sequence');
-    this._clearChoices();
-    this._choiceBtns = [];
-  }
-
-  _resolveReaction(success) {
-    const r = this._reaction;
-    if (!r) return;
-    const branch = success ? r.success : r.failure;
-    if (branch?.effect) branch.effect(this.state);
-    saveState(this.state);
-    this._reactionOverlay?.setVisible(false);
-    this._reaction = null;
-    const next = branch?.next ?? r.choice.next ?? null;
-    if (next) this._renderNode(next);
-    else this._close();
   }
 
   _renderNode(nodeId) {
@@ -147,6 +77,7 @@ export class DialogueScene extends Phaser.Scene {
     const node = this._tree.find(n=>n.id===nodeId);
     if (!node)  { this._close(); return; }
     this._nodeId = nodeId;
+    this._clearReaction();
 
     // Portrait
     if (this._portrait) { this._portrait.destroy(); this._portrait = null; }
@@ -207,8 +138,6 @@ export class DialogueScene extends Phaser.Scene {
 
     this._focus = 0;
     this._highlightFocus();
-    this._reactionOverlay?.setVisible(false);
-    this._reaction = null;
   }
 
   _moveFocus(d) {
@@ -234,16 +163,98 @@ export class DialogueScene extends Phaser.Scene {
   _confirmFocus() { this._selectChoice(this._focus); }
 
   _selectChoice(i) {
-    if (this._reaction) return;
     if (i<0||i>=this._choiceBtns.length) return;
     const { choice } = this._choiceBtns[i];
     if (choice.reaction) {
-      this._startReaction(choice);
+      this._runReaction(choice, (success) => {
+        if (success) {
+          if (choice.effect) { choice.effect(this.state); saveState(this.state); }
+          const next = choice.reaction.next || choice.next;
+          if (next) this._renderNode(next); else this._close();
+        } else {
+          if (choice.reaction.failEffect) { choice.reaction.failEffect(this.state); saveState(this.state); }
+          const failNext = choice.reaction.failNext || choice.failNext;
+          if (failNext) this._renderNode(failNext); else if (choice.failClose) this._close(); else this._close();
+        }
+      });
       return;
     }
     if (choice.effect) { choice.effect(this.state); saveState(this.state); }
     if (choice.next)   { this._renderNode(choice.next); }
     else               { this._close(); }
+  }
+
+  _runReaction(choice, done) {
+    this._clearReaction();
+    this._reactionActive = true;
+    const cfg = choice.reaction || {};
+    this._reactionSeq = (cfg.seq || ['LEFT','RIGHT','UP']).map(s=>String(s).toUpperCase());
+    this._reactionIndex = 0;
+    this._reactionDone = done;
+
+    const W = this.scale.width, H = this.scale.height;
+    this._reactionLayer = this.add.container(0,0).setScrollFactor(0).setDepth(7040);
+    const dim = this.add.rectangle(W/2, H/2, W, H, 0x000000, 0.25).setDepth(7040);
+    const box = this.add.rectangle(W/2, H/2+10, 760, 180, 0x180818, 0.98).setStrokeStyle(2, 0xff88cc, 0.85).setDepth(7041);
+    const title = this.add.text(W/2, H/2-58, cfg.prompt || 'React in order!', { fontSize:'18px', color:'#ffffff', fontStyle:'bold' }).setOrigin(0.5).setDepth(7042);
+    this._reactionText = this.add.text(W/2, H/2-20, this._reactionSeq.join('  →  '), { fontSize:'20px', color:'#ff88dd', fontStyle:'bold' }).setOrigin(0.5).setDepth(7042);
+    this._reactionProg = this.add.text(W/2, H/2+16, `1 / ${this._reactionSeq.length}`, { fontSize:'16px', color:'#e0d0ee' }).setOrigin(0.5).setDepth(7042);
+    const hint = this.add.text(W/2, H/2+52, 'Use arrow keys / WASD, or tap the arrows below.', { fontSize:'13px', color:'#aa88bb' }).setOrigin(0.5).setDepth(7042);
+    this._reactionLayer.add([dim, box, title, this._reactionText, this._reactionProg, hint]);
+
+    const btnY = H/2 + 92;
+    const mk = (label, key, x) => {
+      const r = this.add.rectangle(x, btnY, 78, 54, 0x2c0c2c, 0.96).setStrokeStyle(2, 0xcc88ff, 0.85).setDepth(7042).setInteractive({useHandCursor:true});
+      const tx = this.add.text(x, btnY, label, { fontSize:'22px', color:'#fff', fontStyle:'bold' }).setOrigin(0.5).setDepth(7043);
+      r.on('pointerdown', () => this._reactionInput(key));
+      this._reactionLayer.add([r,tx]);
+    };
+    mk('◀', 'LEFT', W/2 - 144);
+    mk('▲', 'UP', W/2 - 48);
+    mk('▼', 'DOWN', W/2 + 48);
+    mk('▶', 'RIGHT', W/2 + 144);
+
+    const timeout = cfg.timeout || (2200 + this._reactionSeq.length * 520);
+    this._reactionTimer = this.time.delayedCall(timeout, () => this._reactionFail());
+  }
+
+  _reactionInput(key) {
+    if (!this._reactionActive) return;
+    const expected = this._reactionSeq[this._reactionIndex];
+    if (!expected) return;
+    const ok = String(key || '').toUpperCase() === expected;
+    if (!ok) {
+      this._reactionFail();
+      return;
+    }
+    this._reactionIndex += 1;
+    if (this._reactionProg) this._reactionProg.setText(`${this._reactionIndex + 1} / ${this._reactionSeq.length}`);
+    if (this._reactionIndex >= this._reactionSeq.length) {
+      this._reactionSuccess();
+    }
+  }
+
+  _reactionSuccess() {
+    if (!this._reactionActive) return;
+    this._clearReaction();
+    this._reactionDone?.(true);
+  }
+
+  _reactionFail() {
+    if (!this._reactionActive) return;
+    this._clearReaction();
+    this._reactionDone?.(false);
+  }
+
+  _clearReaction() {
+    this._reactionActive = false;
+    this._reactionSeq = [];
+    this._reactionIndex = 0;
+    if (this._reactionTimer) { this._reactionTimer.remove(false); this._reactionTimer = null; }
+    if (this._reactionLayer) { this._reactionLayer.destroy(true); this._reactionLayer = null; }
+    this._reactionText = null;
+    this._reactionProg = null;
+    this._reactionDone = null;
   }
 
   _clearChoices() {
@@ -256,8 +267,7 @@ export class DialogueScene extends Phaser.Scene {
   }
 
   _close() {
-    this._reactionOverlay?.setVisible(false);
-    this._reaction = null;
+    this._clearReaction();
     saveState(this.state);
     this.cameras.main.fade(240, 4, 2, 10, false, (cam,p) => {
       if (p>=1) {

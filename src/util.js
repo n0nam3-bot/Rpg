@@ -217,21 +217,19 @@ export function freshState() {
     gold: 10, kills: 0, defeats: 0,
     factions: { order:55, cult:10, wilds:60 },
     npcs: {
-      elder:     { met:false, trust:50, hostile:false, stage:0 },
-      mage:      { met:false, trust:50, stage:0, guide:false },
-      merchant:  { met:false, trust:50, suspicious:false, stage:0 },
-      guard:     { met:false, trust:40, hostile:false, bribed:false, stage:0 },
-      witch:     { met:false, trust:30, pact:false, stage:0 },
-      knight:    { met:false, trust:50, aggression:0, stage:0 },
-      townGray:  { met:false, trust:35, flirt:0, stage:0 },
-      townRed:   { met:false, trust:35, flirt:0, stage:0 },
+      elder:    { met:false, trust:50, hostile:false, stage:0 },
+      mage:     { met:false, trust:50, hostile:false, stage:0 },
+      merchant: { met:false, trust:50, suspicious:false, stage:0 },
+      guard:    { met:false, trust:40, hostile:false, bribed:false, stage:0 },
+      knight:   { met:false, trust:45, hostile:false, aggression:0, stage:0 },
+      witch:    { met:false, trust:30, pact:false, stage:0 },
+      townGray: { met:false, trust:45, stage:0, flirt:0 },
+      townRed:  { met:false, trust:35, stage:0, flirt:0 },
     },
     flags: {
       prologueRead:false, firstBattle:false, dungeon1Clear:false,
       sanctumOpen:false, witchPact:false, betrayedOrder:false,
       cultInitiate:false, strippedPublic:false, elderReveal:false,
-      mageDefeated:false, knightDefeated:false, golemBossDefeated:false,
-      finalBranch:'', finalGateSeen:false,
     },
     // ── Harassment / escalation tracking ─────────────────────────────
     harassment: {
@@ -259,14 +257,14 @@ export function normalizeState(raw) {
     flags:    { ...base.flags,    ...(raw.flags    || {}) },
     settings: { ...base.settings, ...(raw.settings || {}) },
     npcs: {
-      elder:     { ...base.npcs.elder,    ...(raw.npcs?.elder    || {}) },
-      mage:      { ...base.npcs.mage,     ...(raw.npcs?.mage     || {}) },
-      merchant:  { ...base.npcs.merchant,  ...(raw.npcs?.merchant || {}) },
-      guard:     { ...base.npcs.guard,     ...(raw.npcs?.guard    || {}) },
-      witch:     { ...base.npcs.witch,     ...(raw.npcs?.witch    || {}) },
-      knight:    { ...base.npcs.knight,    ...(raw.npcs?.knight   || {}) },
-      townGray:  { ...base.npcs.townGray,  ...(raw.npcs?.townGray || {}) },
-      townRed:   { ...base.npcs.townRed,   ...(raw.npcs?.townRed  || {}) },
+      elder:    { ...base.npcs.elder,    ...(raw.npcs?.elder    || {}) },
+      mage:     { ...base.npcs.mage,     ...(raw.npcs?.mage     || {}) },
+      merchant: { ...base.npcs.merchant, ...(raw.npcs?.merchant || {}) },
+      guard:    { ...base.npcs.guard,    ...(raw.npcs?.guard    || {}) },
+      knight:   { ...base.npcs.knight,   ...(raw.npcs?.knight   || {}) },
+      witch:    { ...base.npcs.witch,    ...(raw.npcs?.witch    || {}) },
+      townGray: { ...base.npcs.townGray, ...(raw.npcs?.townGray || {}) },
+      townRed:  { ...base.npcs.townRed,  ...(raw.npcs?.townRed  || {}) },
     },
   };
   for (const slot of SLOT_ORDER) {
@@ -446,13 +444,15 @@ export function makeVirtualControls(scene) {
   };
 
   // D-pad: left side
-  mkBtn('◀', 80,  H-92, 108, 88, 'left');
-  mkBtn('▶', 196, H-92, 108, 88, 'right');
-  mkBtn('▲', 138, H-198, 108, 88, 'jump');
+  mkBtn('◀', 78,  H-78, 110, 88, 'left');
+  mkBtn('▶', 204, H-78, 110, 88, 'right');
+  mkBtn('▲', 141, H-174,110, 88, 'jump');
 
   // Action buttons: right side
-  mkBtn('E\nINT', W-180, H-80,  100, 80, 'interact');
-  mkBtn('X\nATK', W-68,  H-80,  100, 80, 'attack');
+  mkBtn('E
+INT', W-198, H-78,  110, 88, 'interact');
+  mkBtn('X
+ATK', W-72,  H-78,  110, 88, 'attack');
 
   return { state, ctr };
 }
@@ -553,6 +553,15 @@ export function generateProceduralTextures(scene) {
     g.fillStyle(0x8a6020,1); g.fillRect(6,24,6,80);
     g.fillStyle(0xffcc00,0.9); g.fillCircle(9,24,8);
   });
+  mk('npc-mage', 64,118, g => {
+    g.fillStyle(0x2a1530,1); g.fillCircle(32,18,16);
+    g.fillStyle(0x3a1a42,1); g.fillTriangle(32,-2,10,22,54,22);
+    g.fillRect(20,34,24,46); g.fillRect(12,34,10,36); g.fillRect(42,34,10,36);
+    g.fillStyle(0x1a0a24,1); g.fillRect(16,80,18,28); g.fillRect(30,80,18,28);
+    g.fillStyle(0x9900cc,0.8); g.fillCircle(32,18,7);
+    g.fillStyle(0x660099,1); g.fillRect(46,28,4,60);
+    g.fillStyle(0xcc44ff,0.9); g.fillCircle(48,26,6);
+  });
   mk('npc-merchant', 64,108, g => {
     g.fillStyle(0x5a3a28,1); g.fillCircle(32,18,16);
     g.fillStyle(0x7a5020,1); g.fillRect(20,34,24,40);
@@ -560,12 +569,27 @@ export function generateProceduralTextures(scene) {
     g.fillStyle(0x4a3010,1); g.fillRect(16,74,18,24); g.fillRect(30,74,18,24);
     g.fillStyle(0x8a6030,0.9); g.fillEllipse(48,62,22,28);
   });
-  mk('npc-guard', 64,118, g => {
+  mk('npc-town-gray', 64,118, g => {
     g.fillStyle(0x364050,1); g.fillCircle(32,18,16);
     g.fillStyle(0x445060,1); g.fillRect(18,34,28,48);
     g.fillRect(10,34,10,38); g.fillRect(44,34,10,38);
     g.fillStyle(0x556070,1); g.fillRect(14,82,20,28); g.fillRect(30,82,20,28);
     g.fillStyle(0x8899aa,1); g.fillRect(6,36,8,44); g.fillRect(48,32,8,54);
+  });
+  mk('npc-town-red', 64,118, g => {
+    g.fillStyle(0x47182a,1); g.fillCircle(32,18,16);
+    g.fillStyle(0x5a223a,1); g.fillRect(18,34,28,48);
+    g.fillRect(10,34,10,38); g.fillRect(44,34,10,38);
+    g.fillStyle(0x7a2a4a,1); g.fillRect(14,82,20,28); g.fillRect(30,82,20,28);
+    g.fillStyle(0xc44a77,1); g.fillRect(6,36,8,44); g.fillRect(48,32,8,54);
+  });
+  mk('npc-knight', 64,118, g => {
+    g.fillStyle(0x2b3b57,1); g.fillCircle(32,18,16);
+    g.fillStyle(0x405068,1); g.fillRect(18,34,28,48);
+    g.fillRect(10,34,10,38); g.fillRect(44,34,10,38);
+    g.fillStyle(0x6d85a8,1); g.fillRect(14,82,20,28); g.fillRect(30,82,20,28);
+    g.fillStyle(0x99b9dd,1); g.fillRect(6,36,8,44); g.fillRect(48,32,8,54);
+    g.fillStyle(0xe0ecff,0.9); g.fillCircle(32,18,5);
   });
   mk('npc-witch', 64,118, g => {
     g.fillStyle(0x2a1530,1); g.fillCircle(32,18,16);
@@ -713,10 +737,7 @@ export function registerEnemyAnims(scene) {
   mk('guard-idle', 'npc-guard-s',    0, 6,  7,  -1);
   mk('guard-walk', 'npc-guard-walk', 0, 7,  9,  -1);
 
-  // ── Knight (order / final path) ─────────────────────────────────────
-  mk('knight-idle', 'npc-knight-idle', 0, 0, 1, -1);
-  mk('knight-run',  'npc-knight-run',  0, 0, 1, -1);
-  mk('knight-hurt', 'npc-knight-hurt', 0, 0, 1, 0);
-  mk('knight-dead', 'npc-knight-dead', 0, 0, 1, 0);
-  mk('knight-atk',  'npc-knight-atk',  0, 3, 10, 0);
+  // ── Town cultist (red) ─────────────────────────────────────────────
+  mk('cult-idle', 'npc-cult-s',    0, 5,  7,  -1);
+  mk('cult-walk', 'npc-cult-walk', 0, 7,  9,  -1);
 }

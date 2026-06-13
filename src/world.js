@@ -7,7 +7,7 @@ import {
 import { ENCOUNTERS, CORRIDOR_EVENTS } from './data.js';
 
 const WORLD_W  = 7200;
-const GROUND_Y = 572;
+const GROUND_Y = 520;
 
 export class WorldScene extends Phaser.Scene {
   constructor() { super({ key:'WorldScene' }); }
@@ -15,7 +15,7 @@ export class WorldScene extends Phaser.Scene {
   init(data = {}) {
     this.state    = normalizeState(data.state);
     this._spawnX  = data.spawnX ?? this.state.spawnX ?? 220;
-    this._spawnY  = GROUND_Y - 92;
+    this._spawnY  = GROUND_Y - 90;
     this._showPrologue = !!data.showPrologue;
     this._paused   = false;
     this._eventCD  = 0;
@@ -42,7 +42,7 @@ export class WorldScene extends Phaser.Scene {
     this._createDoors(W, H);
     this._buildHUD(W, H);
 
-    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+    this.cameras.main.startFollow(this.player, true, 0.12, 0.12, 0, -110);
 
     // Prompt text
     this._promptText = this.add.text(W/2, H-44, '', {
@@ -128,8 +128,7 @@ export class WorldScene extends Phaser.Scene {
     const heroKey = this.textures.exists(K(FRAMES.S_IDLE[0])) ? K(FRAMES.S_IDLE[0]) : 'npc-elder';
     this.player = this.physics.add.sprite(this._spawnX, this._spawnY, heroKey)
       .setScale(0.82).setCollideWorldBounds(true).setDepth(100);
-    this.player.body.setSize(56, 84, true);
-    this.player.body.setOffset(8, 18);
+    this.player.body.setSize(52, 72, true);
     this.player.setBounce(0.02);
 
     this.physics.add.collider(this.player, this._ground);
@@ -171,74 +170,67 @@ export class WorldScene extends Phaser.Scene {
   }
 
   _buildVirtualDpad(W, H) {
-    const BW = 108, BH = 88;
-    const ly = H - 72, ry = H - 72;
-    const held = {};
+    const BW = 96, BH = 80, gap = 10;
+    const ly = H - 56, ry = H - 56;
 
     const mkBtn = (label, x, y, onDown, onUp) => {
       const g = this.add.graphics().setScrollFactor(0).setDepth(9001);
-      g.fillStyle(0x160a28, 0.74); g.fillRoundedRect(-BW/2, -BH/2, BW, BH, 14);
-      g.lineStyle(2, 0xcc88ff, 0.7); g.strokeRoundedRect(-BW/2, -BH/2, BW, BH, 14);
+      g.fillStyle(0x1a0030, 0.55); g.fillRoundedRect(-BW/2, -BH/2, BW, BH, 10);
+      g.lineStyle(2, 0x9944ff, 0.55); g.strokeRoundedRect(-BW/2, -BH/2, BW, BH, 10);
       g.setPosition(x, y);
-
-      this.add.text(x, y, label, {
-        fontSize:'14px', color:'#ffffffdd', fontStyle:'bold', align:'center', lineSpacing:2
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(9002);
-
-      const zone = this.add.zone(x, y, BW, BH).setScrollFactor(0).setDepth(9003).setInteractive({ useHandCursor:false });
-
-      const clear = (ptr) => {
-        if (held[ptr.id]) {
-          delete held[ptr.id];
-          g.setAlpha(0.78);
-          if (onUp) onUp(ptr);
-        }
-      };
-
-      zone.on('pointerdown', (ptr) => {
-        held[ptr.id] = true;
-        g.setAlpha(1);
-        if (onDown) onDown(ptr);
-      });
-      zone.on('pointerup', clear);
-      zone.on('pointerout', clear);
-      zone.on('pointerupoutside', clear);
-      this.input.on('pointerupoutside', clear);
+      const t = this.add.text(x, y, label, { fontSize:'14px', color:'#ffffffbb', fontStyle:'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(9002);
+      const zone = this.add.zone(x, y, BW, BH).setScrollFactor(0).setDepth(9003).setInteractive();
+      zone.on('pointerdown', (ptr) => { g.setAlpha(0.95); onDown(ptr); });
+      this.input.on('pointerup', (ptr) => onUp(ptr));
     };
 
-    mkBtn('◀', 82, ly, () => { this._leftHeld = true; }, () => { this._leftHeld = false; });
-    mkBtn('▶', 194, ly, () => { this._rightHeld = true; }, () => { this._rightHeld = false; });
-    mkBtn('▲', 138, ly-92, () => { if (this.player.body.blocked.down) this._jumpNow = true; }, ()=>{});
-    mkBtn('E\nINT', W-176, ry, () => { this._interactNow = true; }, ()=>{});
-    mkBtn('I\nINV', W-64, ry, () => { if (!this._paused) this._openInventory(); }, ()=>{});
+    const held = {};
+    const makeHeld = (key) => [
+      (ptr) => { held[ptr.id] = key; this[`_${key}Held`] = true; },
+      (ptr) => { if (held[ptr.id] === key) { this[`_${key}Held`] = false; delete held[ptr.id]; } },
+    ];
+
+    const [ldL, luL] = makeHeld('left');
+    const [ldR, luR] = makeHeld('right');
+
+    mkBtn('◀', 72,   ly, ldL, luL);
+    mkBtn('▶', 180,  ly, ldR, luR);
+    mkBtn('▲', 126,  ly-90, (ptr) => {
+      if (this.player.body.blocked.down) this._jumpNow = true;
+    }, ()=>{});
+    mkBtn('E\nINT', W-184, ry, () => { this._interactNow = true; }, ()=>{});
+    mkBtn('I\nINV', W-72,  ry, () => { if (!this._paused) this._openInventory(); }, ()=>{});
   }
 
   // ─── NPCs ────────────────────────────────────────────────────────────────
   _createNPCs() {
     // skey = initial texture key, animKey = sprite-sheet animation to play
     const defs = [
-      { key:'mage',     x:560,  label:'Sanctum Mage',    color:'#dca6ff', skey:'npc-mage-idle',     animKey:'mage-idle',       scale:1.02 },
-      { key:'merchant', x:1220, label:'Merchant Ida',    color:'#ffcc88', skey:'npc-merchant-idle', animKey:'merchant-idle',   scale:1.08 },
-      { key:'townGray', x:2060, label:'Townsperson',     color:'#d6d6ee', skey:'npc-town-gray-idle', animKey:'town-gray-idle',  scale:1.00 },
-      { key:'townRed',  x:2820, label:'Townsperson',     color:'#ff99aa', skey:'npc-town-red-idle',  animKey:'town-red-idle',   scale:1.00 },
-      { key:'knight',   x:3740, label:'Knight Of Order', color:'#aaccff', skey:'npc-knight-idle',    animKey:'knight-idle',     scale:1.00 },
+      { key:'mage',     x:560,  label:'Sanctum Mage',  color:'#cc88ff', skey:'npc-mage',       animKey:null,             scale:1.18 },
+      { key:'merchant', x:1080, label:'Merchant Ida',  color:'#ffcc88', skey:'npc-merchant',   animKey:null,             scale:1.52 },
+      { key:'townGray', x:1620, label:'Townsperson',   color:'#d0d0e0', skey:'npc-town-gray',  animKey:null,             scale:1.04 },
+      { key:'townRed',  x:2080, label:'Townsperson',   color:'#ff8899', skey:'npc-town-red',   animKey:null,             scale:1.04 },
+      { key:'knight',   x:2660, label:'Knight',        color:'#99ccff', skey:'npc-knight',      animKey:null,             scale:1.18 },
+      { key:'guard',    x:3460, label:'Captain Serrin',color:'#88aacc', skey:'npc-guard-s',     animKey:'guard-idle',     scale:1.02 },
+      { key:'witch',    x:5500, label:'Witch Moira',   color:'#cc88ff', skey:'npc-witch-s',     animKey:'witch-idle',     scale:1.04 },
     ];
 
     this._npcs = defs.map(d => {
       const tex = this.textures.exists(d.skey) ? d.skey : 'npc-elder';
-      const spr = this.add.sprite(d.x, GROUND_Y-66, tex).setOrigin(0.5,1).setScale(d.scale || 1).setDepth(90);
+      const spr = this.add.sprite(d.x, GROUND_Y-54, tex).setOrigin(0.5,1).setScale(d.scale || 0.92).setDepth(90);
 
       if (d.animKey && this.anims.exists(d.animKey)) {
         spr.anims.play(d.animKey, true);
       } else if (!d.animKey) {
-        this.tweens.add({ targets:spr, y:spr.y-5, yoyo:true, repeat:-1, duration:1600+Math.random()*400, ease:'Sine.easeInOut' });
+        this.tweens.add({ targets:spr, y:spr.y-5, yoyo:true, repeat:-1,
+          duration:1600+Math.random()*400, ease:'Sine.easeInOut' });
       }
 
-      const lbl = this.add.text(d.x, GROUND_Y-126, d.label, {
+      const lbl = this.add.text(d.x, GROUND_Y-120, d.label, {
         fontSize:'13px', color:d.color, fontStyle:'bold',
         backgroundColor:'#00000077', padding:{x:5,y:2},
       }).setOrigin(0.5);
-      const ekey = this.add.text(d.x, GROUND_Y-104, '[E]', {
+      const ekey = this.add.text(d.x, GROUND_Y-100, '[E]', {
         fontSize:'12px', color:'#ffffff88',
       }).setOrigin(0.5);
 
@@ -251,11 +243,11 @@ export class WorldScene extends Phaser.Scene {
     const skKey = this.textures.exists(K(FRAMES.SK_IDLE[0])) ? K(FRAMES.SK_IDLE[0]) : 'npc-elder';
 
     const patrolDefs = [
-      { x:2500, min:2300, max:2860, enc:ENCOUNTERS.goblin,       color:0xaacc44 },
-      { x:3200, min:2950, max:3480, enc:ENCOUNTERS.orc,          color:0xcc8844 },
-      { x:3980, min:3780, max:4380, enc:ENCOUNTERS.goblinBoss,   color:0xcc4422 },
-      { x:4860, min:4620, max:5280, enc:ENCOUNTERS.minotaur,     color:0x88aa44 },
-      { x:5920, min:5600, max:6320, enc:ENCOUNTERS.minotaurBoss, color:0xcc5522 },
+      { x:2780, min:2540, max:3140, enc:ENCOUNTERS.goblin,      color:0xaacc44 },
+      { x:3520, min:3240, max:3980, enc:ENCOUNTERS.orc,         color:0xaa6622 },
+      { x:4340, min:4060, max:4760, enc:ENCOUNTERS.goblinBoss,  color:0xcc4422 },
+      { x:5160, min:4880, max:5700, enc:ENCOUNTERS.minotaur,    color:0xcc4422 },
+      { x:6060, min:5780, max:6400, enc:ENCOUNTERS.minotaurBoss,color:0xcc2244 },
     ];
 
     this._patrols = patrolDefs.map((d, index) => {
@@ -263,8 +255,7 @@ export class WorldScene extends Phaser.Scene {
         console.error(`Error: patrolDefs index ${index} is referencing an unknown enemy key in ENCOUNTERS!`);
       }
 
-      const enc = d.enc || { useSkeleton:true, label:'Unknown Enemy', animPrefix:'sk' };
-
+      const enc = d.enc || { useSkeleton: true, label: 'Unknown Enemy', animPrefix: 'sk' };
       let tex;
       if (enc.useSkeleton) {
         tex = skKey;
@@ -276,7 +267,7 @@ export class WorldScene extends Phaser.Scene {
 
       const sc  = (enc.scale || 1.0) * 0.78;
       const spr = this.add.sprite(d.x, GROUND_Y-54, tex)
-        .setScale(sc).setOrigin(0.5,1).setDepth(88);
+        .setScale(sc).setOrigin(0.5, 1).setDepth(88);
 
       let sets;
       if (enc.useSkeleton) {
@@ -379,8 +370,7 @@ export class WorldScene extends Phaser.Scene {
     const tier    = corruptionTier(s.corruption);
     const stripped = 5 - intactCount(s.clothing);
     const tStr    = stripped > 0 ? ` | ⚠${stripped} stripped` : '';
-    const agg     = s.harassment?.knightAggression || 0;
-    this._dayTxt.setText(`Day ${s.day}  ·  ${tier.label}${tStr}  ·  ${s.gold}g  ·  ${s.kills} kills  ·  Aggro ${agg}`);
+    this._dayTxt.setText(`Day ${s.day}  ·  ${tier.label}${tStr}  ·  ${s.gold}g  ·  ${s.kills} kills`);
     this._objTxt.setText(s.objective);
     const px2 = this.player?.x || 0;
     const zone = px2 < 2400 ? 'SANCTUARY HALL' : px2 < 5600 ? 'CATACOMBS' : 'INNER SANCTUM';
@@ -499,18 +489,18 @@ export class WorldScene extends Phaser.Scene {
   _findNear() {
     const px = this.player.x, py = this.player.y;
     for (const n of this._npcs) {
-      if (Math.abs(px-n.x)<86 && Math.abs(py-GROUND_Y)<92)
+      if (Math.abs(px-n.x)<78 && Math.abs(py-GROUND_Y)<88)
         return { prompt:`Speak with ${n.label} [E / INT]`, action:()=>this._openDialogue(n.key) };
     }
     for (const d of this._doors) {
-      if (Math.abs(px-d.x)<64) {
+      if (Math.abs(px-d.x)<56) {
         if (d.x === 100) return { prompt:`Return to Title [E]`, action:()=>this.scene.start('TitleScene') };
         return { prompt:`Enter: ${d.label} [E]`, action:()=>this._useDoor(d) };
       }
     }
     for (const it of this._items) {
-      if (Math.abs(px-it.x)<72 && !it.opened) return { prompt:it.prompt, action:it.action };
-      if (it.opened && Math.abs(px-it.x)<72) return { prompt:'Already opened', action:()=>{} };
+      if (Math.abs(px-it.x)<64 && !it.opened) return { prompt:it.prompt, action:it.action };
+      if (it.opened && Math.abs(px-it.x)<64) return { prompt:'Already opened', action:()=>{} };
     }
     return null;
   }
@@ -634,46 +624,102 @@ export class WorldScene extends Phaser.Scene {
 
   _onBattleReturn(data) {
     this._paused = false;
-    const id = data?.encounterId || data?.encounter?.id || '';
     if (data.outcome === 'defeat') {
       this.player.x = 220;
-      this.player.y = GROUND_Y - 92;
+      this.player.y = GROUND_Y - 108;
       this.cameras.main.fadeIn(500, 4, 2, 10);
     }
-    if (data.outcome === 'victory') {
-      if (id === 'mage') this.state.flags.mageDefeated = true;
-      if (id === 'knight') this.state.flags.knightDefeated = true;
-      if (id === 'golemBoss') this.state.flags.golemBossDefeated = true;
-      if (id === 'goblinBoss') this.state.flags.dungeon1Clear = true;
-      if (id === 'minotaurBoss') this.state.flags.sanctumOpen = true;
+    if (data.outcome === 'victory' && data.encounterId) {
+      this.state.flags[data.encounterId + 'Defeated'] = true;
+      if (data.encounterId === 'mage' && this.state.corruption < 65 && !this.state.flags.golemBossDefeated) {
+        this.state.flags.finalRouteStage = 'golemBoss';
+        saveState(this.state);
+        this.time.delayedCall(700, () => this._startBattle(ENCOUNTERS.golemBoss || this._getFinalEncounter('golemBoss')));
+        return;
+      }
+      if (data.encounterId === 'golemBoss' || data.encounterId === 'knight') {
+        this.state.flags.finalRouteCleared = true;
+        this.state.objective = 'The final sanctum is broken. Return to the hall.';
+      }
       saveState(this.state);
     }
-    this._bossTriggered = false;
     this._applyCorruptionTint();
     this._refreshHUD();
   }
 
   // ─── BOSS TRIGGER ─────────────────────────────────────────────────────────
   _checkBossTrigger() {
-    if (this._paused || this._bossTriggered) return;
+    if (this._paused || this._bossTriggered || this.state.flags.finalRouteCleared) return;
     const px = this.player?.x || 0;
-    if (px < 6500) return;
-    const encounter = this._getFinalEncounter();
-    if (!encounter) return;
-    this._bossTriggered = true;
-    this._startBattle(encounter);
+    const s  = this.state;
+    if (px >= 6700 && (s.questStage >= 2 || s.flags.sanctumOpen || s.npcs.guard.bribed)) {
+      this._bossTriggered = true;
+      this._showFinalWarning();
+    }
   }
 
-  _getFinalEncounter() {
-    const s = this.state;
-    if ((s.corruption || 0) >= 60) {
-      if (!s.flags.knightDefeated) return ENCOUNTERS.knight;
-      if (!s.flags.golemBossDefeated) return ENCOUNTERS.golemBoss;
-      return null;
-    }
-    if (!s.flags.mageDefeated) return ENCOUNTERS.mage;
-    if (!s.flags.golemBossDefeated) return ENCOUNTERS.golemBoss;
-    return null;
+  _showFinalWarning() {
+    const W = this.scale.width, H = this.scale.height;
+    const highCorr = this.state.corruption >= 65;
+    this._paused = true;
+    const flash = this.add.rectangle(W/2, H/2, W, H, highCorr ? 0x6600aa : 0xaa0022, 0).setScrollFactor(0).setDepth(8000);
+    this.tweens.add({ targets:flash, alpha:{ from:0, to:0.55 }, duration:400, yoyo:true });
+
+    const c = this.add.container(W/2, H/2).setScrollFactor(0).setDepth(8001);
+    const bg  = this.add.rectangle(0,0, 780,340, 0x06010c, 0.98).setStrokeStyle(3, highCorr ? 0xcc44ff : 0xff0044, 0.9);
+    const title = highCorr ? 'THE KNIGHT STIRS' : 'THE SANCTUM DEEPENS';
+    const sub   = highCorr
+      ? 'Your corruption has drawn the knight into the open. He will meet you as the order-bound force that he is.'
+      : 'Your corruption is still low. The sanctum answers in two steps: the mage first, then the golem boss.';
+    const t1  = this.add.text(0,-116,title,{fontSize:'40px',color:highCorr?'#aaccff':'#ff2244',fontStyle:'bold',stroke:'#220000',strokeThickness:5}).setOrigin(0.5);
+    const t2  = this.add.text(0,-28,[
+      sub,
+      '',
+      'Prepare your willpower, your inventory, and your movement timing.',
+      highCorr ? 'The knight is as strong as the golem boss.' : 'The mage and golem boss will come in sequence.',
+    ].join(`
+`), {fontSize:'15px',color:'#ccbbdd',align:'center',wordWrap:{width:720},lineSpacing:4}).setOrigin(0.5);
+
+    const fight = this.add.rectangle(-110,128, 220,56, highCorr ? 0x1a2238 : 0x2a0000, 0.92).setStrokeStyle(2, highCorr ? 0xaaccff : 0xff2244, 0.85);
+    const fTxt  = this.add.text(-110,128, highCorr ? 'FACE KNIGHT' : 'BEGIN', {fontSize:'20px',color:'#fff',fontStyle:'bold'}).setOrigin(0.5);
+    const back  = this.add.rectangle(120,128, 220,56, 0x0a001a, 0.92).setStrokeStyle(2,0x7733cc,0.8);
+    const bTxt  = this.add.text(120,128,'RETREAT',{fontSize:'20px',color:'#cc88ff',fontStyle:'bold'}).setOrigin(0.5);
+    c.add([bg,t1,t2,fight,fTxt,back,bTxt]);
+
+    const startPath = () => {
+      c.destroy(); flash.destroy();
+      if (highCorr) {
+        this._startBattle(ENCOUNTERS.knight || this._getFinalEncounter('knight'));
+      } else {
+        this.state.flags.finalRouteStage = 'mage';
+        this._startBattle(ENCOUNTERS.mage || this._getFinalEncounter('mage'));
+      }
+    };
+
+    fight.setInteractive({useHandCursor:true});
+    fight.on('pointerdown', startPath);
+    back.setInteractive({useHandCursor:true});
+    back.on('pointerdown',()=>{
+      c.destroy(); flash.destroy();
+      this._bossTriggered = false;
+      this._paused = false;
+      this.player.x = 6500;
+    });
+
+    this.input.keyboard.once('keydown-ENTER', startPath);
+    this.input.keyboard.once('keydown-ESC', ()=>{
+      if (!c.active) return;
+      c.destroy(); flash.destroy();
+      this._bossTriggered = false;
+      this._paused = false;
+      this.player.x = 6500;
+    });
+  }
+
+  _getFinalEncounter(stage='mage') {
+    if (stage === 'knight') return ENCOUNTERS.knight;
+    if (stage === 'golemBoss') return ENCOUNTERS.golemBoss;
+    return ENCOUNTERS.mage;
   }
 
   // ─── PROLOGUE ─────────────────────────────────────────────────────────────
