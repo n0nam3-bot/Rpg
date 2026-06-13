@@ -558,7 +558,7 @@ export class WorldScene extends Phaser.Scene {
     const s = Object.entries(items).map(([k,v])=>`${v}× ${k}`).join(', ');
     this._floatText(this.player.x, this.player.y-50, `${gold}g${s?' + '+s:''}`, '#ffdd44');
     // Mark the interactable as opened
-    this._items.find(it=>it.x===1720 && id==='c1' || it.x===3820 && id==='c2')?.['opened'] && (this._items.find(it=>it.x===1720 && id==='c1' || it.x===3820 && id==='c2').opened = true);
+    const targetItem = this._items.find(it => (it.x === 1720 && id === 'c1') || (it.x === 3820 && id === 'c2')); if (targetItem) {   targetItem.opened = true; }
     saveState(this.state);
   }
 
