@@ -127,6 +127,13 @@ export const ENCOUNTERS = {
     stripChance:0.62, arousalAttack:true, bindAttack:true,
     lore:'The architect of the sanctuary\'s fall. It does not hate you. It simply wants.', scale:1.3,
   },
+  possessedGuard: {
+    id: 'possessedGuard',
+    label: 'Possessed Guard',
+    useSkeleton: true,
+    animPrefix: 'sk',
+    scale: 1.0
+  }
 };
 
 // ── TOWN TROUBLE ENCOUNTERS (morality/escalation chain) ───────────────────
