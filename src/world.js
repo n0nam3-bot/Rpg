@@ -249,8 +249,14 @@ export class WorldScene extends Phaser.Scene {
       { x:5000, min:4750, max:5350, enc:ENCOUNTERS.possessedGuard,color:0x4422cc },
     ];
 
-    this._patrols = patrolDefs.map(d => {
-      const enc = d.enc;
+      this._patrols = patrolDefs.map((d, index) => {
+      // 1. Safe object validation check
+      if (!d.enc) {
+        console.error(`Error: patrolDefs index ${index} is referencing an unknown enemy key in ENCOUNTERS!`);
+      }
+
+      // 2. Prevent application crash by supplying fallback properties
+      const enc = d.enc || { useSkeleton: true, label: "Unknown Enemy", animPrefix: "sk" };
 
       // Resolve initial texture
       let tex;
