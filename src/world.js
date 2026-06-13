@@ -660,7 +660,7 @@ export class WorldScene extends Phaser.Scene {
     const bg  = this.add.rectangle(0,0, 760,320, 0x06010c, 0.98).setStrokeStyle(3, 0xff0044, 0.9);
     const t1  = this.add.text(0,-116,'THE PATRON STIRS',{fontSize:'40px',color:'#ff2244',fontStyle:'bold',stroke:'#220000',strokeThickness:5}).setOrigin(0.5);
     const t2  = this.add.text(0,-28,[
-      'You have reached the Inner Sanctum's heart.',
+      'You have reached the Inner Sanctums heart.',
       'The Patron senses your approach — and your corruption.',
       '',
       'Ensure your willpower is strong and your inventory is prepared.',
