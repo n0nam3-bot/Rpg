@@ -659,7 +659,7 @@ export class WorldScene extends Phaser.Scene {
     const c = this.add.container(W/2, H/2).setScrollFactor(0).setDepth(8001);
     const bg  = this.add.rectangle(0,0, 760,320, 0x06010c, 0.98).setStrokeStyle(3, 0xff0044, 0.9);
     const t1  = this.add.text(0,-116,'THE PATRON STIRS',{fontSize:'40px',color:'#ff2244',fontStyle:'bold',stroke:'#220000',strokeThickness:5}).setOrigin(0.5);
-    const t2  = this.add.text(0,-28,[
+        const t2  = this.add.text(0,-28,[
       'You have reached the Inner Sanctums heart.',
       'The Patron senses your approach — and your corruption.',
       '',
@@ -667,8 +667,7 @@ export class WorldScene extends Phaser.Scene {
       'Holy Water weakens it significantly.',
       '',
       this.state.flags.witchPact ? 'The pact with Moira will serve you here.' : 'If Witch Moira offered a pact, consider returning to her first.',
-    ].join('
-'), {fontSize:'15px',color:'#ccbbdd',align:'center',wordWrap:{width:700},lineSpacing:4}).setOrigin(0.5);
+    ].join(`\n`), {fontSize:'15px',color:'#ccbbdd',align:'center',wordWrap:{width:700},lineSpacing:4}).setOrigin(0.5);
 
     const fight = this.add.rectangle(-110,128, 200,56, 0x2a0000, 0.92).setStrokeStyle(2,0xff2244,0.85);
     const fTxt  = this.add.text(-110,128,'FACE IT',{fontSize:'20px',color:'#fff',fontStyle:'bold'}).setOrigin(0.5);
