@@ -714,7 +714,7 @@ export class WorldScene extends Phaser.Scene {
       reward:{ gold:120, hp:20, sta:20, wil:20, pressureDrop:40, item:'holyWater', corruptionDrop:12 },
       intents:['heavyStrike','arouse','heavyStrip','bind','voidPulse','heavyStrike','guard','voidPulse'],
       stripChance:0.62, arousalAttack:true, bindAttack:true,
-      lore:'The architect of the sanctuary's fall. It does not hate you. It simply wants — your will, your flesh, your becoming.',
+      lore:'The architect of the sanctuarys fall. It does not hate you. It simply wants — your will, your flesh, your becoming.',
     };
   }
 
