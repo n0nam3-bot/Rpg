@@ -449,10 +449,8 @@ export function makeVirtualControls(scene) {
   mkBtn('▲', 141, H-174,110, 88, 'jump');
 
   // Action buttons: right side
-  mkBtn('E
-INT', W-198, H-78,  110, 88, 'interact');
-  mkBtn('X
-ATK', W-72,  H-78,  110, 88, 'attack');
+  mkBtn('E\nINT', W-198, H-78,  110, 88, 'interact');
+  mkBtn('X\nATK', W-72,  H-78,  110, 88, 'attack');
 
   return { state, ctr };
 }
