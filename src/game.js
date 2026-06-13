@@ -34,15 +34,21 @@ const config = {
   ],
 };
 
-window.addEventListener('load', () => {
+const boot = () => {
+  if (typeof window === 'undefined') return;
   window.__veiledGame = new Phaser.Game(config);
-});
-
-// Force rescale on orientation change and resize
-const rescale = () => {
-  if (!window.__veiledGame) return;
-  window.__veiledGame.scale.refresh();
 };
-window.addEventListener('resize', rescale);
-window.addEventListener('orientationchange', () => setTimeout(rescale, 200));
-screen.orientation?.addEventListener?.('change', () => setTimeout(rescale, 200));
+
+if (typeof window !== 'undefined') {
+  if (document.readyState === 'loading') window.addEventListener('load', boot);
+  else boot();
+
+  // Force rescale on orientation change and resize
+  const rescale = () => {
+    if (!window.__veiledGame) return;
+    window.__veiledGame.scale.refresh();
+  };
+  window.addEventListener('resize', rescale);
+  window.addEventListener('orientationchange', () => setTimeout(rescale, 200));
+  screen.orientation?.addEventListener?.('change', () => setTimeout(rescale, 200));
+}

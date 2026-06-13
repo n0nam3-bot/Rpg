@@ -217,15 +217,21 @@ export function freshState() {
     gold: 10, kills: 0, defeats: 0,
     factions: { order:55, cult:10, wilds:60 },
     npcs: {
-      elder:    { met:false, trust:50, hostile:false, stage:0 },
-      merchant: { met:false, trust:50, suspicious:false, stage:0 },
-      guard:    { met:false, trust:40, hostile:false, bribed:false, stage:0 },
-      witch:    { met:false, trust:30, pact:false, stage:0 },
+      elder:     { met:false, trust:50, hostile:false, stage:0 },
+      mage:      { met:false, trust:50, stage:0, guide:false },
+      merchant:  { met:false, trust:50, suspicious:false, stage:0 },
+      guard:     { met:false, trust:40, hostile:false, bribed:false, stage:0 },
+      witch:     { met:false, trust:30, pact:false, stage:0 },
+      knight:    { met:false, trust:50, aggression:0, stage:0 },
+      townGray:  { met:false, trust:35, flirt:0, stage:0 },
+      townRed:   { met:false, trust:35, flirt:0, stage:0 },
     },
     flags: {
       prologueRead:false, firstBattle:false, dungeon1Clear:false,
       sanctumOpen:false, witchPact:false, betrayedOrder:false,
       cultInitiate:false, strippedPublic:false, elderReveal:false,
+      mageDefeated:false, knightDefeated:false, golemBossDefeated:false,
+      finalBranch:'', finalGateSeen:false,
     },
     // ── Harassment / escalation tracking ─────────────────────────────
     harassment: {
@@ -253,10 +259,14 @@ export function normalizeState(raw) {
     flags:    { ...base.flags,    ...(raw.flags    || {}) },
     settings: { ...base.settings, ...(raw.settings || {}) },
     npcs: {
-      elder:    { ...base.npcs.elder,    ...(raw.npcs?.elder    || {}) },
-      merchant: { ...base.npcs.merchant, ...(raw.npcs?.merchant || {}) },
-      guard:    { ...base.npcs.guard,    ...(raw.npcs?.guard    || {}) },
-      witch:    { ...base.npcs.witch,    ...(raw.npcs?.witch    || {}) },
+      elder:     { ...base.npcs.elder,    ...(raw.npcs?.elder    || {}) },
+      mage:      { ...base.npcs.mage,     ...(raw.npcs?.mage     || {}) },
+      merchant:  { ...base.npcs.merchant,  ...(raw.npcs?.merchant || {}) },
+      guard:     { ...base.npcs.guard,     ...(raw.npcs?.guard    || {}) },
+      witch:     { ...base.npcs.witch,     ...(raw.npcs?.witch    || {}) },
+      knight:    { ...base.npcs.knight,    ...(raw.npcs?.knight   || {}) },
+      townGray:  { ...base.npcs.townGray,  ...(raw.npcs?.townGray || {}) },
+      townRed:   { ...base.npcs.townRed,   ...(raw.npcs?.townRed  || {}) },
     },
   };
   for (const slot of SLOT_ORDER) {
@@ -436,9 +446,9 @@ export function makeVirtualControls(scene) {
   };
 
   // D-pad: left side
-  mkBtn('◀', 68,  H-80, 100, 80, 'left');
-  mkBtn('▶', 186, H-80, 100, 80, 'right');
-  mkBtn('▲', 127, H-170,100, 80, 'jump');
+  mkBtn('◀', 80,  H-92, 108, 88, 'left');
+  mkBtn('▶', 196, H-92, 108, 88, 'right');
+  mkBtn('▲', 138, H-198, 108, 88, 'jump');
 
   // Action buttons: right side
   mkBtn('E\nINT', W-180, H-80,  100, 80, 'interact');
@@ -703,7 +713,10 @@ export function registerEnemyAnims(scene) {
   mk('guard-idle', 'npc-guard-s',    0, 6,  7,  -1);
   mk('guard-walk', 'npc-guard-walk', 0, 7,  9,  -1);
 
-  // ── Town cultist (red) ─────────────────────────────────────────────
-  mk('cult-idle', 'npc-cult-s',    0, 5,  7,  -1);
-  mk('cult-walk', 'npc-cult-walk', 0, 7,  9,  -1);
+  // ── Knight (order / final path) ─────────────────────────────────────
+  mk('knight-idle', 'npc-knight-idle', 0, 0, 1, -1);
+  mk('knight-run',  'npc-knight-run',  0, 0, 1, -1);
+  mk('knight-hurt', 'npc-knight-hurt', 0, 0, 1, 0);
+  mk('knight-dead', 'npc-knight-dead', 0, 0, 1, 0);
+  mk('knight-atk',  'npc-knight-atk',  0, 3, 10, 0);
 }
